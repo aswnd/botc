@@ -17,7 +17,8 @@
     "audio:download": "node scripts/download-audio.ts",
     "test:harness": "node --env-file-if-exists=.env scripts/harness-smoke.ts",
     "test:playtest": "node --test tests/playtest.test.ts",
-    "playtest": "node --env-file-if-exists=.env scripts/playtest.ts"
+    "playtest": "node --env-file-if-exists=.env scripts/playtest.ts",
+    "playtest:loop": "node --env-file-if-exists=.env scripts/playtest-loop.ts"
   },
   "devDependencies": {
     "playwright": "^1.64.1"

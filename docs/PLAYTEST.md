@@ -149,3 +149,44 @@ exploratory behavior and screenshot review. Existing engine tests remain the
 broader oracle for role interactions and game rules (`npm test`). Browser voting
 assertions use a read-only public view; the LLM protocol exposes no engine mutation,
 JavaScript evaluation, secret database access, or direct game-command endpoint.
+
+## Rolling Codex test-and-fix loop
+
+```bash
+npm run playtest:loop
+# Defaults: 10 agents total, up to 3 active, 90 minutes per command.
+npm run playtest:loop -- --total 10 --concurrency 3 --timeout-minutes 90
+```
+
+Requires a clean committed Git checkout, installed dependencies and Chromium,
+an authenticated `codex` CLI (`codex login`), and the normal Storyteller `.env`.
+The CLI uses your configured Codex model. Each agent plays through the interactive
+Playwright harness, reviews both screens, fixes observed issues, adds regressions,
+and runs the tests. Agents rotate 7–10 players and areas of emphasis. These are ten
+separate omniscient QA sessions, not ten independently competing players.
+
+The controller creates a detached Git worktree for each agent. The shared
+`node_modules` directory is linked; `.env` is copied privately and remains ignored.
+Normal saved games are never copied. Agents use temporary harness databases and
+real paid Storyteller calls. Codex runs unattended with `danger-full-access` so its
+browser and localhost server can operate; worktrees isolate edits, not permissions.
+Run this only in a trusted local project.
+
+Each completed agent is checked with `npm test`. Fixes are committed and integrated
+serially: cherry-pick into another isolated worktree based on the latest main
+checkout, run `npm test` again, then fast-forward the main checkout. A replacement
+starts after that agent's checks/integration finish and sees the newest merged
+fixes. Failed agents count toward the ten attempts. Conflicts, failed checks and
+concurrent user edits retain the worktree and commit for review, report failure,
+and never overwrite the main checkout. No changes is a valid result, but the
+agent's report must be read to distinguish completed coverage from a blocker.
+
+Logs, final agent reports, worktrees, browser screenshots/traces, test output and
+`summary.json` remain in `test-results/agent-loop-<timestamp>/`. The command exits
+nonzero when any agent or integration fails. Ctrl+C stops active process groups
+and prevents replacement agents from starting. Timeouts terminate each command's
+process group. Keep the checkout unchanged while running. Retained worktrees can
+be removed later with `git worktree remove --force <path>`; their `.env` copies
+contain credentials, and browser artifacts contain secret game information.
+
+The Codex invocation follows the [official noninteractive CLI documentation](https://learn.chatgpt.com/docs/non-interactive-mode).
