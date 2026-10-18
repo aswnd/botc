@@ -137,3 +137,9 @@ for the agent prompt, commands, coverage checklist, and setup.
 
 `npm run test:harness` runs a complete scripted browser rehearsal with real visit
 timing and AI calls. Add `-- --demo` for the faster open-role rehearsal.
+
+## Readable rules wiki
+
+Open **http://127.0.0.1:3000/wiki/** after `npm start`, or click **Regel-Wiki** in the game header. The English manual contains 114 linked articles: beginner lessons, voting examples, Storyteller procedures, a glossary, and all 99 characters from the supplied three editions and Travellers & Fabled almanac. Search across explanations or filter by collection. Each article links to the original PDF at the relevant viewer page. Use **Print article** for a clean handout.
+
+This is an authored reading companion, separate from the raw PDF retrieval index. Edit `wiki/content.js` for manual content; `npm run wiki:build` rebuilds only `shared/wiki/manuals.json`. The manual reflects the supplied PDFs (including the rulebook’s non-final-version notice), not a claim of current live rulings. The app’s two-visit procedure has its own article. Reading other editions here does not add them to the game engine.

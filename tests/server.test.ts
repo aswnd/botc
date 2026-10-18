@@ -12,6 +12,8 @@ async function command(app:ReturnType<typeof createApp>,type:string,rest:Record<
 test('HTTP delivers app/assets and rejects secret files and cross-origin writes',async()=>{
   const app=createApp({dbPath:':memory:'});try{
     assert.equal((await request(app,'/')).status,200);assert.match((await request(app,'/src/app.js')).body,/privateScreen/);
+    const favicon=await request(app,'/favicon.ico');assert.equal(favicon.status,302);assert.equal(favicon.headers.Location,'/src/favicon.svg');
+    assert.equal((await request(app,'/src/favicon.svg')).status,200);
     assert.equal((await request(app,'/.env')).status,400);assert.equal((await request(app,'/data/game.sqlite')).status,400);
     const r=await request(app,'/api/new',{method:'POST',data:{},headers:{origin:'https://evil.example'}});assert.equal(r.status,400);
     const rules=(await request(app,'/api/rules')).json();assert.equal(rules.characters.length,22);assert.ok(rules.rules.length>=6);

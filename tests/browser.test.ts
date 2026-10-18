@@ -23,7 +23,7 @@ class Browser {
   }
   fail(e:Error){for(const p of this.pending.values())p.reject(e);this.pending.clear();}
   send(method:string,params:Record<string,unknown>={},sessionId?:string):Promise<any> {return new Promise((resolve,reject)=>{const id=++this.seq;const timer=setTimeout(()=>{this.pending.delete(id);reject(new Error(`CDP timeout: ${method}`));},method==='Page.captureScreenshot'?25000:8000);this.pending.set(id,{resolve:r=>{clearTimeout(timer);resolve(r);},reject:e=>{clearTimeout(timer);reject(e);}});(this.process.stdio[3] as any).write(JSON.stringify({id,method,params,...(sessionId?{sessionId}:{})})+'\0');});}
-  async page(app:ReturnType<typeof createApp>,path:string,width=1440,height=1000) {
+  async page(app:ReturnType<typeof createApp>,path:string,width=1440,height=1000,ready='!!document.querySelector(".connection.online")') {
     if(!app.server.listening)await new Promise<void>((ok,fail)=>{app.server.once('error',fail);app.server.listen(0,'127.0.0.1',ok);});
     const address=app.server.address();if(!address||typeof address==='string')throw new Error('No test server address');
     const base=`http://127.0.0.1:${address.port}`;
@@ -38,7 +38,7 @@ class Browser {
     const wait=async(expression:string)=>{const end=Date.now()+8000;while(Date.now()<end){if(await evaluate(expression))return;await new Promise(r=>setTimeout(r,50));}throw new Error(`Browser wait timed out: ${expression}\n${await evaluate('document.body.innerText')}\n${runtimeErrors.join('\n')}\n${await evaluate('document.documentElement.outerHTML.slice(0,1500)')}`);};
     const click=async(selector:string)=>{await wait(`!!document.querySelector(${JSON.stringify(selector)})&&!document.querySelector(${JSON.stringify(selector)}).disabled`);await evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);await wait('!document.querySelector(".working")');};
     const screenshot=async(file:string)=>{await this.send('Page.bringToFront',{},sessionId);const r=await this.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sessionId);await writeFile(file,Buffer.from(r.data,'base64'));};
-    await wait('!!document.querySelector(".connection.online")');return {evaluate,wait,click,screenshot,runtimeErrors,sessionId};
+    await wait(ready);return {evaluate,wait,click,screenshot,runtimeErrors,sessionId};
   }
   close(){this.process.kill('SIGTERM');}
 }
@@ -160,4 +160,34 @@ test('Chromium: real MP3 decoding, audible signal, crossfades, pause, volume, mu
     assert.deepEqual(page.runtimeErrors,[]);
     await page.evaluate('clearInterval(window.sampleTimer);window.player.dispose();Promise.all(window.audioContexts.map(c=>c.close()))');
   }finally{browser.close();app.server.closeAllConnections();await app.close();await new Promise(r=>setTimeout(r,100));await rm(profile,{recursive:true,force:true,maxRetries:3,retryDelay:100});}
+});
+
+
+test('Chromium: readable manual search, filters, deep links, PDF access and mobile layout',async t=>{
+  const executable=process.env.CHROMIUM_PATH??'/usr/bin/chromium';
+  if(!existsSync(executable)){t.skip('Chromium is not installed.');return;}
+  const profile=await mkdtemp(join(tmpdir(),'clocktower-wiki-'));const browser=new Browser(executable,profile);const app=createApp({dbPath:':memory:'});
+  try{
+    await browser.send('Browser.getVersion');await mkdir(resolve('test-results'),{recursive:true});
+    const page=await browser.page(app,'/wiki/',1440,1000,'!!document.querySelector("#article h2")');
+    assert.equal(await page.evaluate('document.querySelector("#count").textContent'),'114 articles');
+    await page.screenshot(resolve('test-results/wiki-desktop.png'));
+    await page.evaluate(`document.querySelector('#search').value='poisoned';document.querySelector('#search').dispatchEvent(new Event('input'));`);
+    assert.ok(await page.evaluate('document.querySelectorAll("#navigation a").length>5'));
+    await page.evaluate(`document.querySelector('#search').value='';document.querySelector('#search').dispatchEvent(new Event('input'));document.querySelector('#edition').value='Bad Moon Rising';document.querySelector('#edition').dispatchEvent(new Event('change'));`);
+    assert.equal(await page.evaluate('document.querySelectorAll("#navigation a").length'),25);
+    await page.click('#navigation a[href="#pukka"]');
+    await page.wait('document.querySelector("#article h2").textContent==="Pukka"');
+    assert.equal(await page.evaluate(`fetch(document.querySelector('.sources a').href).then(r=>r.headers.get('content-type'))`),'application/pdf');
+    await page.click('[data-section="section-1"]');
+    assert.equal(await page.evaluate('location.hash'),'#pukka');
+    await page.evaluate(`document.querySelector('#search').value='zzz-no-such-rule';document.querySelector('#search').dispatchEvent(new Event('input'));`);
+    assert.ok(await page.evaluate('document.querySelector("#navigation").textContent.includes("No articles found")'));
+    const mobile=await browser.page(app,'/wiki/#voting',390,844,'document.querySelector("#article h2")?.textContent==="Nominations, votes and ties"');
+    assert.equal(await mobile.evaluate('document.documentElement.scrollWidth<=innerWidth'),true);
+    await mobile.screenshot(resolve('test-results/wiki-mobile.png'));
+    await mobile.evaluate(`location.hash='#setup'`);await mobile.wait('!!document.querySelector("table")');
+    assert.equal(await mobile.evaluate('document.querySelectorAll("tbody tr").length'),11);
+    assert.deepEqual(page.runtimeErrors,[]);assert.deepEqual(mobile.runtimeErrors,[]);
+  }finally{browser.close();await app.close();await rm(profile,{recursive:true,force:true});}
 });

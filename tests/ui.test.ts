@@ -58,6 +58,16 @@ test('actual UI templates and actions run a complete first-night handover flow',
     assert.equal(ui.app.getGame()!.winner,'good');assert.match(ui.h.html,/Das Gute gewinnt/);assert.match(ui.h.html,/reveal-card/);assert.match(ui.h.html,/Was in den Nächten geschah/);
   }finally{await ui.close();}
 });
+test('private rule citations are readable and model HTML stays escaped',async()=>{
+  const ui=await interfaceHarness();try{
+    ui.h.setDemo();await ui.click('create');await ui.click('assistant');await ui.click('ack');await ui.click('home');await ui.click('open-private',{player:'p1'});
+    ui.h.privateData.history=[{role:'assistant',text:'Siehe [Regelbuch, S. 13](rulebook:p13:3). <img src=x onerror=alert(1)> [Link](javascript:alert(1))'}];
+    ui.h.render();
+    assert.match(ui.h.html,/Siehe Regelbuch, S\. 13\./);
+    assert.doesNotMatch(ui.h.html,/rulebook:p13|<img|href="javascript:/);
+    assert.match(ui.h.html,/&lt;img/);
+  }finally{await ui.close();}
+});
 test('projector templates receive only the public invitation and timer',async()=>{
   const ui=await interfaceHarness('/projector');try{
     assert.match(ui.h.html,/Die Stadt wartet|DIE STADT WARTET/);

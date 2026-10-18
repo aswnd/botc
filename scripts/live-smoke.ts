@@ -4,7 +4,7 @@ import { mkdtemp,rm,mkdir,writeFile } from 'node:fs/promises';
 import { join,resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createApp } from '../server/app.ts';
-import { privateAction } from '../server/engine.ts';
+import { applyCommand, makeGame, privateAction } from '../server/engine.ts';
 
 const directory=await mkdtemp(join(tmpdir(),'ravenswood-live-'));
 const app=createApp({dbPath:join(directory,'game.sqlite')});
@@ -24,7 +24,22 @@ try {
   assert.equal((await fetch(base)).status,200);assert.equal((await fetch(base+'/projector')).status,200);assert.equal((await fetch(base+'/.env')).status,400);report.http=true;
   const events=await fetch(base+'/api/events');assert.equal(events.headers.get('content-type'),'text/event-stream');stream=events.body!.getReader();const first=await stream.read();assert.ok(new TextDecoder().decode(first.value).startsWith('data: '));report.sse=true;
   const connected=await api('/api/ai/check',{});report.liveAI=connected.ok;report.aiStatus=connected.service.status;
-  if(!connected.ok)app.ai.key='';
+  assert.ok(connected.ok,connected.service.status);
+  // Regression for the normal-game playtest that stopped on Noah's poison
+  // choice. Unlike the demo lineup, this needs quoted starting-info tuples.
+  let regression=makeGame({names:['Alex','Greta','Marc','Lena','Sofia','Albert','Ole','Noah'],assistant:0,
+    roles:['washerwoman','recluse','imp','empath','mayor','librarian','ravenkeeper','poisoner'],minimumVisitMs:0});
+  for(let step=0;step<30&&regression.phase!=='night_results';step++){
+    const p=regression.players[regression.queueIndex];
+    regression=await applyCommand(regression,regression.announcement?{type:'ack'}:
+      {type:'visit',playerId:p.id,targets:privateAction(regression,p)?['p4']:[]},app.ai.services(regression));
+  }
+  assert.equal(regression.phase,'night_results');
+  assert.ok(regression.players[0].info.length,'Washerwoman received starting information');
+  assert.ok(regression.players[3].info.length,'Poisoned Empath received information');
+  assert.ok(regression.players[5].info.length,'Librarian received starting information');
+  report.normalFirstNight=true;
+  report.normalFirstNightEstimatedUSD=app.store.spent(regression.id);
   await api('/api/new',{names:Array.from({length:8},(_,i)=>`Testperson ${i+1}`),assistant:0,demo:true});
   await command('ack');
   const opened=await api('/api/private/open',{playerId:'p1'});

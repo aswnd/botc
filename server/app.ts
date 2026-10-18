@@ -12,6 +12,7 @@ import { CHARACTERS, RULES, categoryName } from '../shared/characters.ts';
 import type { Game, Command } from '../shared/types.ts';
 
 type Session={token:string;playerId:string;openedAt:number;lastActivity:number;gameId:string};
+const manualPdfNames=new Set(['Rulebook.pdf','Trouble_Brewing.pdf','Bad_Moon_Rising.pdf','Sects__Violets.pdf','Travellers__Fabled.pdf','Trouble Brewing script.pdf','Bad Moon Rising script.pdf','Sects & Violets script.pdf']);
 export function createApp({dbPath=resolve('data/game.sqlite'),root=resolve('.'),clock=Date.now,fetcher=fetch}:{dbPath?:string;root?:string;clock?:()=>number;fetcher?:typeof fetch}={}) {
   const store=new Store(dbPath);const ai=new Storyteller(store,fetcher);let game:Game|null=store.load();let session:Session|null=null;
   store.db.exec('CREATE TABLE IF NOT EXISTS tutorial (id INTEGER PRIMARY KEY CHECK(id=1), state TEXT NOT NULL)');
@@ -35,6 +36,7 @@ export function createApp({dbPath=resolve('data/game.sqlite'),root=resolve('.'),
     res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
     try {
       const url=new URL(req.url??'/',`http://${req.headers.host??'localhost'}`);const path=url.pathname;
+      if(req.method==='GET'&&path==='/favicon.ico'){res.writeHead(302,{Location:'/src/favicon.svg'});res.end();return;}
       // No cross-origin mutations: this is a local application, not a public API.
       if(req.method==='POST'){
         const origin=req.headers.origin;if(origin)requireThat(new URL(origin).host===req.headers.host,'Fremde Webseiten dürfen das Spiel nicht steuern.');
@@ -134,11 +136,12 @@ export function createApp({dbPath=resolve('data/game.sqlite'),root=resolve('.'),
         });
       }
       if(req.method!=='GET')return json(res,405,{error:'Methode nicht verfügbar.'});
-      const file=['/','/projector'].includes(path)?'index.html':path.slice(1);
-      requireThat(file==='index.html'||(/^src\/[a-zA-Z0-9/_-]+\.(js|css|svg)$/.test(file)||/^assets\/audio\/[a-zA-Z0-9_-]+\.(mp3|html)$/.test(file)),'Datei nicht verfügbar.');
+      const file=['/','/projector'].includes(path)?'index.html':['/wiki','/wiki/'].includes(path)?'wiki/index.html':decodeURIComponent(path.slice(1));
+      const officialPdf=file.startsWith('official_pdfs/')&&manualPdfNames.has(file.slice('official_pdfs/'.length));
+      requireThat(file==='index.html'||officialPdf||(/^wiki\/(index\.html|app\.js|content\.js|style\.css)$/.test(file)||/^src\/[a-zA-Z0-9/_-]+\.(js|css|svg)$/.test(file)||/^assets\/audio\/[a-zA-Z0-9_-]+\.(mp3|html)$/.test(file)),'Datei nicht verfügbar.');
       const full=resolve(root,file);requireThat(full.startsWith(root+'/'),'Datei nicht verfügbar.');
       const content=await readFile(full).catch(e=>{if(e.code==='ENOENT')throw Object.assign(new GameError('Datei nicht gefunden.'),{status:404});throw e;});const mime:Record<string,string>={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.mp3':'audio/mpeg'};
-      res.writeHead(200,{'Content-Type':mime[extname(file)]??'text/plain','Cache-Control':'no-cache'});res.end(content);
+      res.writeHead(200,{'Content-Type':extname(file)==='.pdf'?'application/pdf':mime[extname(file)]??'text/plain','Cache-Control':'no-cache'});res.end(content);
     }catch(e){if(!res.headersSent)json(res,e instanceof GameError?e.status:500,{error:e instanceof GameError?e.message:'Die Anfrage konnte nicht verarbeitet werden. Der gespeicherte Spielstand bleibt erhalten.'});else res.end();}
   });
   const tick=setInterval(()=>{void serialized(async()=>{
