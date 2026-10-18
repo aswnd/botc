@@ -1,7 +1,7 @@
 # Engine and game master
 
 `server/machine.ts` defines legal phase edges and accepted events per state.
-The persisted phase remains compatible with existing SQLite saves. Announcement,
+New games carry a phone-mode marker. Existing laptop saves remain archived and are not converted. Announcement,
 voting, and paused substates are derived from the snapshot. Only `transition`
 changes phase after creation. Invalid events are rejected before services run.
 Role rules and event actions live in `server/engine.ts`.
@@ -13,8 +13,7 @@ distribution -> night_choices -> night_results -> dawn -> discussion
 ```
 
 Night resolution and daytime deaths can also end the game. Night choices are
-collected first, then resolved in rule order, independently of laptop visit order.
-A Ravenkeeper result can keep the current visit open for a second confirmation.
+collected first, then resolved in rule order, independently of phone submission order. Ravenkeeper targets are preselected; conditional information resolves before later information roles. Each phone confirms results before dawn.
 
 `applyCommand(snapshot, event, services, now)` clones the snapshot, performs the
 transition, and returns the next snapshot. The HTTP layer serializes commands and
@@ -44,3 +43,22 @@ AI services are required for decisions. Existing callers may still pass a `Decid
 `tests/machine.test.ts` covers the phase matrix, guarded substates, service
 isolation, rejected injected options, structured decision context, and narration
 failure handling. Existing engine/HTTP/browser tests cover the playable rules and UI.
+
+
+## Phone transport
+
+`server/phones.ts` owns the persisted lobby, hashed device/recovery credentials,
+per-member idempotency keys, and durable AI decision journal. `/api/lobby/register`
+accepts `{lobbyId,name,seat}`; `/api/player/recover` accepts `{code}` and rotates the
+device credential. `/api/player` uses `X-Player-Token` and returns only that member's
+identity, private view, and submission status. `/api/player/submit` accepts
+`{commandId,gameId,phase,night,targets}`. It binds the actor to the credential and
+does not require the global game version. Submitted choices commit before
+resolution; keyed AI decisions survive a failed resolution and restart.
+
+Laptop mutations use `X-Host-Token`, bootstrapped by `/api/host` only on a loopback
+connection. Lobby assistant/start/reset and night retry are host operations.
+Public state/SSE never include device credentials, readiness identities, targets,
+or private role data, except intentional open-role demo/end-game reveals.
+Legacy terminal endpoints are disabled in the production app. The explicit
+`legacyApi` option exists for historical regression fixtures only.

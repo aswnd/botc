@@ -33,6 +33,9 @@ test('real controller isolates, validates and integrates ten fake agents without
     writeFileSync(join(root,'bin','codex'),`#!/usr/bin/env node
 const fs=require('fs');const path=require('path');
 if(process.argv.includes('--help'))process.exit(0);
+const prompt=fs.readFileSync(0,'utf8');
+for(const required of ['isolated phone1–phone10','shared night choices and results','dead-player confirmations','replace-phone','phone tutorial','unreached checks'])if(!prompt.includes(required))throw new Error('Missing phone coverage: '+required);
+if(prompt.includes('normal visit timing'))throw new Error('Obsolete visit instructions');
 const cwd=process.argv[process.argv.indexOf('-C')+1];
 const id=path.basename(path.dirname(cwd)).replace('agent-','');
 for(let previous=1;previous<Number(id);previous++)if(!fs.existsSync(path.join(cwd,'fix-'+previous+'.txt')))process.exit(2);

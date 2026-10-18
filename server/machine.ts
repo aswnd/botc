@@ -19,7 +19,7 @@ export function transition(g:Game,target:Phase) {
   g.phase=target;
 }
 const commands:Record<MachineState,readonly string[]> = {
-  distribution:['visit'],night_choices:['visit'],night_results:['visit'],dawn:[],
+  distribution:['visit','phone_submit'],night_choices:['visit','phone_submit','phone_resolve'],night_results:['visit','phone_submit'],dawn:[],
   discussion:['timer','nominations','slayer'],
   nominations:['nominate','close_day','slayer'],voting:['vote_draft','vote_confirm'],
   announcement:['ack','timer'],ended:[],paused:[],

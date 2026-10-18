@@ -30,19 +30,23 @@ export async function startSession() {
     await context.tracing.start({screenshots:true,snapshots:true,sources:true});
     const laptop=await context.newPage();
     const projector=await context.newPage();
-    const pages={laptop,projector};
-    const acceptDialogs={laptop:false,projector:false};
-    for(const [screen,page] of Object.entries(pages)) {
-      page.setDefaultTimeout(5000);
+    const pages:Record<string,Page>={laptop,projector};
+    const phoneContexts:Map<string,import('playwright').BrowserContext>=new Map();
+    const acceptDialogs:Record<string,boolean>={laptop:false,projector:false};
+    function trackPage(screen:string,page:Page) {
+      page.setDefaultTimeout(8000);
       page.on('pageerror',error=>events.push({kind:'pageerror',screen,message:error.message}));
       page.on('console',message=>{if(message.type()==='error')events.push({kind:'console',screen,message:message.text(),location:message.location()});});
       page.on('response',response=>{if(response.status()>=400)events.push({kind:'http',screen,status:response.status(),url:response.url()});});
       page.on('dialog',async dialog=>{events.push({kind:'dialog',screen,message:dialog.message()});if(acceptDialogs[screen])await dialog.accept();else await dialog.dismiss();});
+    }
+    for(const [screen,page] of Object.entries(pages)) {
+      trackPage(screen,page);
       await page.goto(`http://127.0.0.1:${address.port}${screen==='projector'?'/projector':'/'}`);
       await page.locator('.connection.online').waitFor();
     }
     await projector.setViewportSize({width:1920,height:1080});
-    // Keep the shared laptop active: hiding its tab deliberately closes private visits.
+    // Each phone uses a separate browser context and player identity.
     await laptop.bringToFront();
     let step=0;
     const transcript:unknown[]=[];
@@ -60,19 +64,34 @@ export async function startSession() {
       await page.screenshot({path:screenshot,fullPage:true});
       return {text:await page.locator('body').innerText(),controls,screenshot,overflow:await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)};
     }
+    async function openPhone(screen:string,replace=false) {
+      if(!/^phone(?:[1-9]|10)$/.test(screen))throw new Error('Use phone1 through phone10');
+      if(pages[screen]&&!replace)return pages[screen];
+      if(phoneContexts.has(screen)) {
+        await phoneContexts.get(screen)!.tracing.stop({path:join(output,`${screen}-replaced-${step}-trace.zip`)});
+        await phoneContexts.get(screen)!.close();
+      }
+      const pc=await browser!.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});phoneContexts.set(screen,pc);
+      await pc.tracing.start({screenshots:true,snapshots:true,sources:true});
+      const page=await pc.newPage();pages[screen]=page;trackPage(screen,page);
+      await page.goto(`http://127.0.0.1:${address.port}/join`);await page.locator('.connection.online').waitFor();return page;
+    }
     async function observe() {
       await laptop.locator('.working').waitFor({state:'hidden',timeout:55000});
-      const observation={step,output,laptop:await observePage(laptop,'laptop'),projector:await observePage(projector,'projector'),events:[...events]};
+      const phones:Record<string,unknown>={};for(const [screen,page] of Object.entries(pages))if(screen.startsWith('phone'))phones[screen]=await observePage(page,screen);
+      const observation={step,output,phones,laptop:await observePage(laptop,'laptop'),projector:await observePage(projector,'projector'),events:[...events]};
       await writeFile(join(output,`${String(step).padStart(4,'0')}-observation.json`),JSON.stringify(observation,null,2));
       return observation;
     }
     async function act(command:any) {
+      if(command.action==='open-phone'||command.action==='replace-phone')await openPhone(command.screen,command.action==='replace-phone');
       const page=pages[command.screen??'laptop'];
-      if(!page)throw new Error('screen must be laptop or projector');
+      if(!page)throw new Error('Open the phone first; screen must be laptop, projector or phone1–phone10');
+      if(command.action!=='observe')await page.bringToFront();
       const selector=command.control?`[data-harness-id="${String(command.control).replace(/[^c0-9]/g,'')}"]`:command.selector;
       const locator=selector?page.locator(selector):null;
       switch(command.action) {
-        case 'observe':break;
+        case 'open-phone':case 'replace-phone':case 'focus':case 'observe':break;
         case 'click':
           acceptDialogs[command.screen??'laptop']=command.acceptDialog===true;
           try {await locator!.click();} finally {acceptDialogs[command.screen??'laptop']=false;}
@@ -94,7 +113,7 @@ export async function startSession() {
             if(present===(command.absent??false))throw new Error(`Text assertion failed: ${command.text}`);
           }
           if(command.noOverflow&&await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth))throw new Error('Horizontal overflow');
-          if(command.noPageErrors&&events.some((e:any)=>e.kind==='pageerror'))throw new Error('Browser exception recorded');
+          if(command.noPageErrors&&events.some((e:any)=>e.kind==='pageerror'&&e.screen===(command.screen??'laptop')))throw new Error('Browser exception recorded');
           break;
         }
         default:throw new Error(`Unknown action: ${command.action}`);
@@ -104,9 +123,9 @@ export async function startSession() {
       transcript.push({step,command});
       return observe();
     }
-    return {app,pages,output,events,observe,act,async close(result:unknown={}) {
+    return {app,pages,output,events,observe,act,openPhone,async close(result:unknown={}) {
       await writeFile(join(output,'report.json'),JSON.stringify({result,events,transcript},null,2));
-      try {await context.tracing.stop({path:join(output,'trace.zip')});} finally {
+      try {for(const [screen,pc] of phoneContexts)await pc.tracing.stop({path:join(output,`${screen}-trace.zip`)});await context.tracing.stop({path:join(output,'trace.zip')});} finally {
         await browser!.close();app.server.closeAllConnections();await app.close();await rm(directory,{recursive:true,force:true});
       }
     }};

@@ -638,8 +638,8 @@ export const articles = [
         "text": "The game engine supports Trouble Brewing for 7–10 players. This wiki also explains the other supplied editions, Travellers and Fabled; that does not add engine support for them."
       },
       {
-        "title": "Two private visits",
-        "text": "The app collects night choices in a first round of laptop visits, resolves them in rules order, and delivers information in a second round. Everyone visits, including dead players. This replaces physical selective waking, so do not use literal laptop visits as evidence for a Chambermaid-style ability."
+        "title": "Two shared phone steps",
+        "text": "Players register with their name and clockwise seat on their own phones over the same Wi-Fi. At night everyone submits a choice or readiness, then everyone reads and confirms results. Dead players participate too. Stay seated and keep the page open; no closed eyes or individual calls are needed. Ravenkeeper preselects a conditional target, which resolves only if killed that night. Screen contents remain private."
       },
       {
         "title": "Public assistant",
@@ -3032,7 +3032,7 @@ export const articles = [
       },
       {
         "title": "Authority and adaptation",
-        "text": "Specific character rules override general rules. If summaries leave an interaction unclear, check the source text with the Storyteller. The Ravenswood app’s two-visit laptop procedure is documented separately and is not the physical procedure in the official rulebook."
+        "text": "Specific character rules override general rules. If summaries leave an interaction unclear, check the source text with the Storyteller. The Ravenswood app’s phone-night procedure is documented separately and is not the physical procedure in the official rulebook."
       },
       {
         "title": "Credits",

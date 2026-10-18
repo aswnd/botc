@@ -34,7 +34,7 @@ export function decisionContext(g:Game,request:unknown=null):DecisionContext {
     notes:g.decisions.findLast(record=>record.notes!==undefined)?.notes??'',recentDecisions:g.decisions,request});
 }
 function options(items:string[]) {return [...new Set(items)].map(id=>({id,label:id}));}
-export function makeGame(input:{names:string[];assistant:number;demo?:boolean;seed?:number;minimumVisitMs?:number;roles?:Role[]}):Game {
+export function makeGame(input:{names:string[];assistant:number;demo?:boolean;seed?:number;minimumVisitMs?:number;roles?:Role[];phone?:boolean}):Game {
   requireThat(Array.isArray(input.names)&&input.names.length>=7&&input.names.length<=10,'Bitte 7 bis 10 Personen eintragen.');
   const names=input.names.map(n=>String(n).trim());
   requireThat(names.every(n=>n.length>0&&n.length<=32)&&new Set(names.map(n=>n.toLocaleLowerCase('de'))).size===names.length,'Namen müssen eindeutig sein und 1–32 Zeichen haben.');
@@ -56,15 +56,16 @@ export function makeGame(input:{names:string[];assistant:number;demo?:boolean;se
   const players:Player[]=names.map((name,i)=>({id:`p${i+1}`,name,seat:i,role:roles[i],apparent:roles[i]==='drunk'?drunkMask:roles[i],team:teamOf(roles[i]),alive:true,ghostVote:true,usedSlayer:false,usedVirgin:false,info:[],notifiedRole:roles[i]==='drunk'?drunkMask:roles[i]}));
   const good=players.filter(p=>p.team==='good');
   const bluffs=shuffle(seed,CHARACTERS.filter(c=>['townsfolk','outsider'].includes(c.category)&&!roles.includes(c.id)&&!players.some(p=>p.apparent===c.id)).map(c=>c.id)).slice(0,3);
-  const g:Game={id:randomUUID(),version:0,seed:seed.seed,demo:!!input.demo,createdAt:Date.now(),phase:'distribution',night:0,day:0,players,assistantId:players[input.assistant].id,queueIndex:0,choices:{},resultDone:[],redHerring:good[Math.floor(rand(seed)*good.length)].id,bluffs,nightDeaths:[],publicDead:[],ravenPending:[],ravenPoisoned:{},nightStartAlive:[],nominated:[],nominators:[],ballots:[],voteDraft:[],cue:{id:0,kind:'assistant'},timer:{remainingMs:420000,deadline:null},paused:false,events:[],decisions:[],minimumVisitMs:input.minimumVisitMs??10000,infoMarkers:{},story:[]};
-  announce(g,'Willkommen in Ravenswood Bluff',RULES.map(r=>`${r.title}: ${r.text}`).join('\n\n')+'\n\nZuerst kommt jede Person einzeln zum Laptop und liest ihren geheimen Charakter. Noch nicht über Rollen sprechen, bis die erste Nacht vorbei ist.');
+  const g:Game={phone:!!input.phone,ready:[],id:randomUUID(),version:0,seed:seed.seed,demo:!!input.demo,createdAt:Date.now(),phase:'distribution',night:0,day:0,players,assistantId:players[input.assistant].id,queueIndex:0,choices:{},resultDone:[],redHerring:good[Math.floor(rand(seed)*good.length)].id,bluffs,nightDeaths:[],publicDead:[],ravenPending:[],ravenPoisoned:{},nightStartAlive:[],nominated:[],nominators:[],ballots:[],voteDraft:[],cue:{id:0,kind:'assistant'},timer:{remainingMs:420000,deadline:null},paused:false,events:[],decisions:[],minimumVisitMs:input.minimumVisitMs??10000,infoMarkers:{},story:[]};
+  announce(g,'Willkommen in Ravenswood Bluff',RULES.map(r=>`${r.title}: ${r.text}`).join('\n\n')+(g.phone?'\n\nAlle lesen ihren geheimen Charakter auf dem eigenen Handy und bestätigen. Noch nicht über Rollen sprechen.':'\n\nZuerst kommt jede Person einzeln zum Laptop und liest ihren geheimen Charakter. Noch nicht über Rollen sprechen, bis die erste Nacht vorbei ist.'));
   g.infoMarkers={};g.story=[];event(g,'Die Stadt versammelt sich.');return g;
 }
-export function nextVisitor(g:Game) { return ['distribution','night_choices','night_results'].includes(g.phase)?g.players[g.queueIndex]??null:null; }
+export function nextVisitor(g:Game) { return !g.phone&&['distribution','night_choices','night_results'].includes(g.phase)?g.players[g.queueIndex]??null:null; }
 export function privateAction(g:Game,p:Player):PlayerPrivateView['action'] {
-  if(g.phase==='night_results'&&g.ravenPending.includes(p.id)&&!g.resultDone.includes(p.id))return {kind:'ravenkeeper',count:1,excludeSelf:false,prompt:'Wähle eine Person, deren Charakter du erfahren möchtest.'};
+  if(!g.phone&&g.phase==='night_results'&&g.ravenPending.includes(p.id)&&!g.resultDone.includes(p.id))return {kind:'ravenkeeper',count:1,excludeSelf:false,prompt:'Wähle eine Person, deren Charakter du erfahren möchtest.'};
   if(g.phase!=='night_choices'||!p.alive)return null;
   const r=p.apparent;
+  if(g.phone&&r==='ravenkeeper')return {kind:r,count:1,excludeSelf:false,prompt:'Wessen Charakter möchtest du erfahren, falls du heute Nacht getötet wirst?'};
   if(r==='poisoner')return {kind:r,count:1,excludeSelf:false,prompt:'Wen möchtest du heute Nacht vergiften?'};
   if(r==='monk'&&g.night>1)return {kind:r,count:1,excludeSelf:true,prompt:'Wen möchtest du vor dem Dämon schützen?'};
   if(r==='imp'&&g.night>1)return {kind:r,count:1,excludeSelf:false,prompt:'Wen möchtest du heute Nacht angreifen?'};
@@ -95,11 +96,11 @@ export function executionStanding(g:Game) {
 export function publicView(g:Game):PublicGameView {
   const pub=(p:Player)=>({id:p.id,name:p.name,seat:p.seat,alive:!g.publicDead.includes(p.id),ghostVote:p.ghostVote});
   const n=nextVisitor(g);
-  return {id:g.id,version:g.version,demo:g.demo,phase:g.phase,day:g.day,night:g.night,players:g.players.map(pub),assistantId:g.assistantId,nextPlayer:n?pub(n):null,announcement:g.announcement?{...g.announcement}:undefined,cue:{...g.cue},timer:{...g.timer},paused:g.paused,nomination:g.nomination?{...g.nomination}:undefined,ballots:structuredClone(g.ballots),voteDraft:[...g.voteDraft],nominators:[...g.nominators],nominated:[...g.nominated],...executionStanding({...g,players:g.players.map(p=>({...p,alive:!g.publicDead.includes(p.id)}))}),events:structuredClone(g.events),winner:g.winner,endReason:g.endReason,...(g.phase==='ended'||g.demo?{reveal:grimoire(g)}:{}),...(g.phase==='ended'?{debrief:structuredClone(g.story)}:{}),minimumVisitMs:g.minimumVisitMs};
+  return {phone:g.phone,id:g.id,version:g.version,demo:g.demo,phase:g.phase,day:g.day,night:g.night,players:g.players.map(pub),assistantId:g.assistantId,nextPlayer:n?pub(n):null,announcement:g.announcement?{...g.announcement}:undefined,cue:{...g.cue},timer:{...g.timer},paused:g.paused,nomination:g.nomination?{...g.nomination}:undefined,ballots:structuredClone(g.ballots),voteDraft:[...g.voteDraft],nominators:[...g.nominators],nominated:[...g.nominated],...executionStanding({...g,players:g.players.map(p=>({...p,alive:!g.publicDead.includes(p.id)}))}),events:structuredClone(g.events),winner:g.winner,endReason:g.endReason,...(g.phase==='ended'||g.demo?{reveal:grimoire(g)}:{}),...(g.phase==='ended'?{debrief:structuredClone(g.story)}:{}),minimumVisitMs:g.minimumVisitMs};
 }
 function startNight(g:Game,precedingText='') {
-  transition(g,'night_choices');g.night++;g.queueIndex=0;g.choices={};g.resultDone=[];g.nightDeaths=[];g.ravenPending=[];g.ravenPoisoned={};g.nightStartAlive=living(g).map(p=>p.id);g.poison=undefined;g.protection=undefined;g.nightExecuted=g.executed;g.executed=undefined;g.timer={remainingMs:420000,deadline:null};
-  announce(g,`Nacht ${g.night}`, precedingText+'Die Nacht beginnt. Bitte nicht miteinander sprechen. Jede Person besucht den Laptop zweimal. In Runde A trefft ihr Entscheidungen, in Runde B erhaltet ihr Ergebnisse. Auch wer tot ist oder keine nächtliche Fähigkeit hat, kommt in beiden Runden. Achtet auf euren Namen am Beamer.');
+  transition(g,'night_choices');g.night++;g.queueIndex=0;g.ready=[];g.choices={};g.resultDone=[];g.nightDeaths=[];g.ravenPending=[];g.ravenPoisoned={};g.nightStartAlive=living(g).map(p=>p.id);g.poison=undefined;g.protection=undefined;g.nightExecuted=g.executed;g.executed=undefined;g.timer={remainingMs:420000,deadline:null};
+  announce(g,`Nacht ${g.night}`, precedingText+(g.phone?'Die Nacht beginnt. Alle öffnen ihr Handy und lassen die Spielseite offen. Bestätigt eure Entscheidung oder Bereitschaft. Danach erhaltet ihr gemeinsam Ergebnisse und bestätigt das Lesen. Auch Tote machen mit. Nicht miteinander sprechen; fremde Bildschirme bleiben privat.':'Die Nacht beginnt. Bitte nicht miteinander sprechen. Jede Person besucht den Laptop zweimal. In Runde A trefft ihr Entscheidungen, in Runde B erhaltet ihr Ergebnisse. Auch wer tot ist oder keine nächtliche Fähigkeit hat, kommt in beiden Runden. Achtet auf euren Namen am Beamer.'));
 }
 function finish(g:Game,winner:'good'|'evil',reason:string) {transition(g,'ended');g.winner=winner;g.endReason=reason;g.publicDead=g.players.filter(p=>!p.alive).map(p=>p.id);g.timer.deadline=null;event(g,reason);announce(g,winner==='good'?'Die Dorfbewohner gewinnen':'Die Bösen gewinnen',reason+' Alle Charaktere werden jetzt aufgedeckt.');}
 function victory(g:Game) {if(g.phase==='ended')return; if(!living(g).some(p=>p.role==='imp'))finish(g,'good','Kein Dämon lebt mehr.');else if(living(g).length<=2)finish(g,'evil','Nur noch zwei Personen leben und der Dämon hat überlebt.');}
@@ -197,6 +198,11 @@ async function resolveNight(g:Game,d:Decider) {
     if(imp&&g.choices[imp.id]?.[0]){secretEvent(g,`${imp.name} greift ${player(g,g.choices[imp.id][0]).name} an.`);await kill(g,player(g,g.choices[imp.id][0]),'demon',d);}
     if(g.phase==='ended')return;
   }
+  if(g.phone)for(const id of g.ravenPending) {
+    const p=player(g,id),target=player(g,g.choices[id]?.[0]);
+    const r=await infoCharacter(g,target,p,`${g.night}:raven:${p.id}`,d,!!g.ravenPoisoned[id]);
+    pushInfo(g,p,`${target.name} ist ${ROLE[r as Role].name}.`);
+  }
   if(g.night===1)for(const [r,cat] of [['washerwoman','townsfolk'],['librarian','outsider'],['investigator','minion']] as [Role,Category][]) {
     for(const p of g.players.filter(p=>p.alive&&p.apparent===r))await startingPair(g,p,cat,d);
   }
@@ -228,7 +234,7 @@ async function resolveNight(g:Game,d:Decider) {
     }
     pushInfo(g,p,'Das Grimoire zum Zeitpunkt deiner nächtlichen Fähigkeit.',snapshot);
   }
-  transition(g,'night_results');g.queueIndex=0;cue(g,'player');
+  transition(g,'night_results');g.queueIndex=0;g.ready=[];if(!g.phone)cue(g,'player');
 }
 function dawn(g:Game) {
   g.publicDead=g.players.filter(p=>!p.alive).map(p=>p.id);g.protection=undefined;g.day=g.night;transition(g,'dawn');g.nominated=[];g.nominators=[];g.ballots=[];g.voteDraft=[];g.nomination=undefined;
@@ -246,6 +252,25 @@ async function reduceCommand(original:Game,command:Command,d:Decider,now:number)
       requireThat(g.announcement,'Es gibt keinen neuen Vorlesetext.');g.announcement=undefined;
       if(g.phase==='dawn'){transition(g,'discussion');g.timer={remainingMs:420000,deadline:now+420000};cue(g,'attention');}
       else if(g.phase==='night_choices')cue(g,'night');else if(nextVisitor(g))cue(g,'player');
+    }else if(type==='phone_submit') {
+      requireThat(g.phone&&!g.announcement,'Bitte zuerst den öffentlichen Vorlesetext bestätigen.');
+      requireThat(command.gameId===g.id&&command.phase===g.phase&&command.night===g.night,'Dieser Schritt ist bereits abgeschlossen.');
+      const p=player(g,command.playerId);g.ready??=[];
+      if(g.phase==='night_choices') {
+        requireThat(!Object.hasOwn(g.choices,p.id),'Deine Entscheidung ist bereits gespeichert.');
+        const action=privateAction(g,p),targets=command.targets??[];
+        requireThat(Array.isArray(targets)&&targets.every(x=>typeof x==='string'),'Ungültige Auswahl.');
+        requireThat(targets.length===(action?.count??0)&&new Set(targets).size===targets.length,'Bitte die erforderliche Anzahl verschiedener Personen auswählen.');
+        for(const id of targets){player(g,id);requireThat(!action?.excludeSelf||id!==p.id,'Bitte eine andere Person wählen.');}
+        if(g.night===1&&p.team==='evil')for(const text of privateView(g,p.id).opening)pushInfo(g,p,text);
+        p.notifiedRole=p.apparent;g.choices[p.id]=targets;
+      }else {
+        requireThat(!g.ready.includes(p.id),'Du hast bereits bestätigt.');g.ready.push(p.id);p.notifiedRole=p.apparent;
+        if(g.ready.length===g.players.length){if(g.phase==='distribution')startNight(g);else dawn(g);}
+      }
+    }else if(type==='phone_resolve') {
+      requireThat(g.phone&&!g.announcement&&g.players.every(p=>Object.hasOwn(g.choices,p.id)),'Es fehlen noch Entscheidungen.');
+      await resolveNight(g,d);
     }else if(type==='visit') {
       requireThat(!g.announcement,'Bitte zuerst den öffentlichen Vorlesetext bestätigen.');
       const p=player(g,command.playerId);requireThat(nextVisitor(g)?.id===p.id,'Bitte die angezeigte Reihenfolge einhalten.');

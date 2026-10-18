@@ -57,10 +57,24 @@ test('playtest JSON adapter operates both screens, recovers from invalid input a
     const initial=await response();
     assert.ok(initial.laptop.controls.length>0,JSON.stringify(initial));
     assert.ok(initial.projector.screenshot);
-    const name=initial.laptop.controls.find((c:any)=>c.tag==='input'&&c.type==='text');
+    const joined=await command({action:'open-phone',screen:'phone1'});
+    const name=joined.phones.phone1.controls.find((c:any)=>c.tag==='input'&&c.type==='text');
     assert.ok(name);
-    const filled=await command({action:'fill',control:name.id,value:'Protocol Tester'});
-    assert.ok(filled.laptop.controls.some((c:any)=>c.value==='Protocol Tester'));
+    const filled=await command({action:'fill',screen:'phone1',control:name.id,value:'Protocol Tester'});
+    assert.ok(filled.phones.phone1.controls.some((c:any)=>c.value==='Protocol Tester'));
+    await command({action:'select',screen:'phone1',selector:'#seat',value:'1'});
+    const registered=await command({action:'click',screen:'phone1',selector:'[data-action="register"]'});
+    assert.match(registered.phones.phone1.text,/Hallo Protocol Tester/);
+    const persisted=await command({action:'reload',screen:'phone1'});
+    assert.match(persisted.phones.phone1.text,/Hallo Protocol Tester/);
+    const isolated=await command({action:'open-phone',screen:'phone2'});
+    assert.ok(isolated.phones.phone2.controls.some((c:any)=>c.label==='name'||c.tag==='input'));
+    assert.doesNotMatch(isolated.phones.phone2.text,/Hallo Protocol Tester/);
+    const replaced=await command({action:'replace-phone',screen:'phone1'});
+    assert.doesNotMatch(replaced.phones.phone1.text,/Hallo Protocol Tester/);
+    assert.ok(replaced.phones.phone1.controls.some((c:any)=>c.tag==='input'));
+    const focused=await command({action:'focus',screen:'phone2'});
+    assert.equal(focused.error,undefined);
     const invalid=await command({action:'unsupported'});
     assert.match(invalid.error,/Unknown action/);
     assert.ok(invalid.observation.laptop);
@@ -85,6 +99,9 @@ test('playtest JSON adapter operates both screens, recovers from invalid input a
     assert.equal(report.result.outcome,'pass');
     assert.ok(report.transcript.some((entry:any)=>entry.command.action==='reload'));
     await access(join(initial.output,'trace.zip'));
+    await access(join(initial.output,'phone1-trace.zip'));
+    await access(join(initial.output,'phone2-trace.zip'));
+    assert.ok(report.transcript.some((entry:any)=>entry.command.action==='replace-phone'));
     await access(initial.laptop.screenshot);
     await access(initial.projector.screenshot);
   } finally {child.kill();child.stdin.destroy();}

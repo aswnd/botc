@@ -10,7 +10,7 @@
     "dev": "node --watch --env-file-if-exists=.env server/index.ts",
     "start": "node --env-file-if-exists=.env server/index.ts",
     "test": "node --test --test-isolation=none tests/*.test.ts",
-    "test:e2e": "node --test --test-isolation=none tests/browser.test.ts",
+    "test:e2e": "node --test --test-isolation=none tests/browser.test.ts tests/phone-browser.test.ts",
     "test:live": "node --env-file-if-exists=.env scripts/live-smoke.ts",
     "wiki:build": "node scripts/build-wiki.ts",
     "check": "node --test --test-isolation=none tests/*.test.ts",

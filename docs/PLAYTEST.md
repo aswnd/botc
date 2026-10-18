@@ -1,6 +1,6 @@
 # Browser playtesting with one LLM
 
-Playwright drives the actual laptop UI and a second projector page, including the
+Playwright drives the actual laptop UI and a projector page and isolated phone browser contexts, including the
 real HTTP server, SQLite persistence, SSE updates, and Storyteller AI. One external
 LLM (for example the coding agent working on this repository) chooses actions for
 all players and the public assistant. The game's Storyteller remains a separate AI
@@ -13,7 +13,7 @@ Give the testing agent this task:
 > Read `docs/PLAYTEST.md`. Use the interactive `playtest` command to play a complete
 > normal game as every player and the assistant. You choose all player actions,
 > targets, nominations and votes. Keep the real Storyteller AI enabled. Inspect
-> both screens and test controls and game rules as you play. Save findings and
+> laptop, projector, and phone screens and test controls and game rules as you play. Save findings and
 > reproduction steps with the final report. Do not run the scripted rehearsal as
 > a substitute for playing.
 
@@ -29,9 +29,8 @@ For an agent using the shell tools in this workspace:
    observation before choosing the next action.
 4. Open the returned screenshot files with the image viewer. Keep separate notes
    for each player: role, information received, action, alive/dead and ghost vote.
-   Choose behavior for the current player, then switch when the UI hands over.
-5. Continue through night visits, public announcements, discussions, nominations
-   and voting to the ending. Use `wait` commands for the real visit countdown.
+   Open phone1–phone10 with `open-phone`, register each name and clockwise seat, then choose the assistant on the laptop.
+5. Continue through shared phone choice/result steps, public announcements, discussions, nominations and voting to the ending. There is no visit countdown.
 6. Send `finish` with the outcome and findings. Return the report and artifact paths.
 
 The controlling agent is the player LLM. Playwright supplies its eyes and controls;
@@ -57,21 +56,26 @@ This also gives other agent frameworks a provider-independent browser tool adapt
 failures emit a JSON object with `status: "failed"` and `error`, exit with a
 nonzero status, and save the failure in the run's `report.json`.
 
-Both pages expose rendered text, visible controls with IDs and select options,
+All opened screens expose rendered text, visible controls with IDs and select options,
 screenshot paths, horizontal overflow, and browser/HTTP errors. Open the screenshots
 with the agent's image viewer to inspect actual display quality. Control IDs are
 valid only for the latest observation and the specified screen. CSS selectors are
 also supported. Actions use Playwright's normal visibility and actionability checks.
 
 ```json
-{"action":"fill","control":"c3","value":"Anna"}
-{"action":"select","selector":"#assistant","value":"0"}
+{"action":"open-phone","screen":"phone1"}
+{"action":"fill","screen":"phone1","selector":"#name","value":"Anna"}
+{"action":"select","screen":"phone1","selector":"#seat","value":"1"}
+{"action":"click","screen":"phone1","selector":"[data-action=\"register\"]"}
+{"action":"select","selector":"#assistant","value":"<registered-member-id-from-options>"}
 {"action":"click","selector":"[data-action=\"create\"]"}
 {"action":"click","control":"c4","screen":"laptop"}
 {"action":"check","selector":"[data-voter=\"p2\"]","checked":true}
 {"action":"press","key":"Escape"}
 {"action":"resize","width":390,"height":844}
-{"action":"reload"}
+{"action":"reload","screen":"phone1"}
+{"action":"focus","screen":"phone2"}
+{"action":"replace-phone","screen":"phone1"}
 {"action":"wait","ms":1000}
 {"action":"assert","text":"Anna"}
 {"action":"assert","text":"secret text","absent":true,"screen":"projector"}
@@ -80,12 +84,10 @@ also supported. Actions use Playwright's normal visibility and actionability che
 {"action":"finish","outcome":"pass","findings":[]}
 ```
 
-Actions default to the laptop. `screen` accepts `laptop` or `projector`. `wait` is
+Actions default to the laptop. `screen` accepts `laptop`, `projector`, or an opened `phone1`–`phone10`. Each phone has isolated storage and a mobile/touch browser context. `focus` switches to a screen without clicking it. `replace-phone` closes that phone and opens a fresh context with empty storage: recover using the code saved from the old device. Open a different unused phone instead when testing whether the old credential is rejected. Observations include a `phones` map with their text, controls and screenshots. `wait` is
 capped at 15 seconds per call. JavaScript dialogs are recorded and dismissed by default. For a deliberate
 confirmation such as a Slayer shot, include `"acceptDialog":true` on its click
-command. Keep the laptop active during private visits:
-hiding its tab intentionally closes its private screen. Screenshots do not switch
-tabs. Reloading deliberately exercises the real session recovery behavior.
+command. Switching tabs conceals private phone content without logging out; use the reveal button after returning. Screenshots do not switch tabs. Reloading exercises persistent player identity.
 
 Each run has a temporary database. Environment configuration from `.env` supplies
 `OPENAI_API_KEY` and `OPENAI_MODEL` just as it does for normal startup. Real AI calls
@@ -97,7 +99,7 @@ Playwright trace remain under `test-results/playtest-<timestamp>/`. These artifa
 include private player information. Inspect traces with:
 
 ```bash
-npx playwright show-trace test-results/playtest-<timestamp>/trace.zip
+npx playwright show-trace test-results/playtest-<timestamp>/phone1-trace.zip
 ```
 
 ## Suggested instruction for the controlling LLM
@@ -109,17 +111,16 @@ npx playwright show-trace test-results/playtest-<timestamp>/trace.zip
 > omniscient QA run: one model sees every player's information; do not claim it
 > measures independent strategy or resistance to information sharing.
 >
-> Inspect laptop and projector screenshots at setup, distribution, both night
-> rounds, dawn, nominations, voting, and the ending. Verify the announced next
-> player, target count, information delivery, hidden private screens after Finish,
-> and public/private separation. Check that queued visits include dead players.
+> Inspect laptop and projector screenshots at setup, distribution, both shared night
+> steps, dawn, nominations, voting, and the ending. Verify target counts, simultaneous information delivery, private conceal/reveal,
+> and public/private separation. Check that dead players also confirm both steps.
 > Ask at least one private rule question and verify the visible AI status.
 >
 > Exercise timer pause/adjustment, attention and replay, nominations, vote edits
 > before confirmation, confirmed totals, ties when possible, executions, and dead
 > votes. Verify that editing a draft does not spend a dead vote and confirming it
-> does. Try an incomplete target choice and inspect the disabled Finish control.
-> Reload and recover a reserved terminal; check that it does not skip the player.
+> does. Try an incomplete target choice and inspect the disabled submission control.
+> Reload a phone and recover its identity in another browser; check that choices persist and the old credential stops working.
 > Inspect mobile overflow and projector readability. Continue until a winner is
 > displayed, with a maximum of 400 actions. On failure record the exact steps,
 > expected/actual behavior, player/phase and screenshot paths. Send a finish command
@@ -135,15 +136,13 @@ npm run test:harness -- --demo
 ```
 
 `test:playtest` tests the actual JSON/stdin adapter in Chromium: control IDs,
-both screens, invalid-command recovery, reload, finish, and saved artifacts. It
+host/projector and isolated phone screens, invalid-command recovery, reload, finish, and saved artifacts. It
 also injects a server startup denial to verify failure reporting. It creates no
 game and makes no AI calls.
 
-This scripted Playwright check traverses a whole game, operates visits and required
+This scripted Playwright check traverses a whole game, operates phone submissions and required
 targets, timer controls, nominations and ballots, checks confirmed vote totals,
-requires a winner, and checks ending layout at mobile width. Normal mode preserves
-the real minimum private-visit time. Demo mode uses the application's existing
-fixed open-role setup and skips that delay. Neither command disables AI calls.
+requires a winner, and checks ending layout at mobile width. Normal mode keeps roles private. Demo mode reveals roles publicly; both modes use shared phone steps. Neither command disables AI calls.
 This deterministic check validates the browser harness; the LLM session supplies
 exploratory behavior and screenshot review. Existing engine tests remain the
 broader oracle for role interactions and game rules (`npm test`). Browser voting
@@ -160,9 +159,9 @@ npm run playtest:loop -- --total 10 --timeout-minutes 90
 
 Requires a clean committed Git checkout, installed dependencies and Chromium,
 an authenticated `codex` CLI (`codex login`), and the normal Storyteller `.env`.
-The CLI uses your configured Codex model. Each agent plays through the interactive
-Playwright harness, reviews both screens, fixes observed issues, adds regressions,
-and runs the tests. Agents rotate 7–10 players and areas of emphasis. These are ten
+The CLI uses your configured Codex model. Each agent registers 7–10 isolated phones through the interactive
+Playwright harness, reviews laptop/projector/phone screenshots, fixes observed issues, adds regressions,
+and runs the tests. Agents rotate 7–10 players and areas of emphasis. Every run checks the shared night steps, dead-player confirmations, phone recovery and concealment, private Q&A/tutorial, and public/private separation. Reports include the winner or blocker, phone coverage, and checks that could not be reached. These are ten
 separate omniscient QA sessions, not ten independently competing players.
 
 The controller creates a detached Git worktree for each agent. The shared

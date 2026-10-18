@@ -43,3 +43,18 @@
   .topbar{height:auto;min-height:80px;flex-wrap:wrap;gap:12px;padding:16px 20px}
   .topbar nav{flex-wrap:wrap;max-width:100%}
 }
+
+.join-qr { width:180px; height:180px; background:white; padding:10px; border-radius:8px; }
+.join-details a { overflow-wrap:anywhere; }
+.lobby-members { padding-left:2rem; line-height:1.9; }
+.phone-shell { max-width:680px; margin:auto; padding:20px; }
+.phone-shell h1 { font-size:2rem; }
+.phone-shell .character-card { margin:20px 0; padding:24px; }
+.phone-shell .target-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.phone-shell input,.phone-shell textarea,.phone-shell select { width:100%; min-width:0; }
+.phone-shell code { overflow-wrap:anywhere; user-select:all; }
+.phone-shell .target { overflow-wrap:anywhere; }
+.phone-shell nav { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+@media(max-width:480px) { .phone-shell { padding:14px; } .phone-shell .character-card { padding:18px; } }
+
+.host-town { max-width:640px; margin:0 auto 40px; padding:0 20px; }

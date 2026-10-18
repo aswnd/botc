@@ -9,7 +9,7 @@ export type DecisionRequest = { key:string; kind:string; prompt:string; options:
 export type Decider = (request:DecisionRequest) => Promise<{choice:string;reason:string;plan?:string;notes?:string}>;
 export type Command = { type:string; [key:string]:unknown };
 export type Game = {
-  id:string; version:number; seed:number; demo:boolean; createdAt:number; phase:Phase; night:number; day:number;
+  phone?:boolean; ready?:string[]; id:string; version:number; seed:number; demo:boolean; createdAt:number; phase:Phase; night:number; day:number;
   players:Player[]; assistantId:string; queueIndex:number; choices:Record<string,string[]>; resultDone:string[];
   redHerring:string; bluffs:Role[]; poison?:{source:string;target:string}; protection?:{source:string;target:string};
   nightDeaths:string[]; publicDead:string[]; ravenPending:string[]; ravenPoisoned:Record<string,boolean>;
@@ -24,7 +24,7 @@ export type Game = {
 };
 export type PublicPlayer = { id:string;name:string;seat:number;alive:boolean;ghostVote:boolean };
 export type PublicGameView = {
-  id:string; version:number; demo:boolean; phase:Phase; night:number;day:number;players:PublicPlayer[];assistantId:string;
+  phone?:boolean; id:string; version:number; demo:boolean; phase:Phase; night:number;day:number;players:PublicPlayer[];assistantId:string;
   nextPlayer:PublicPlayer|null; announcement:Game['announcement']; cue:Game['cue'];timer:Game['timer'];paused:boolean;
   nomination:Game['nomination'];ballots:Game['ballots'];voteDraft:string[];nominators:string[];nominated:string[];
   executionCandidate:string|null; tied:boolean; threshold:number; events:Game['events'];winner?:Team;endReason?:string;

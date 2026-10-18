@@ -5,7 +5,7 @@ import { startSession } from './harness/session.ts';
 const session=await startSession();
 const page=session.pages.laptop;
 let result:any={status:'failed'};
-let visits=0,ballots=0;
+let confirmations=0,ballots=0;
 const captured=new Set<string>();
 async function click(action:string) {
   await page.locator(`[data-action="${action}"]`).first().click();
@@ -14,7 +14,10 @@ async function click(action:string) {
 }
 try {
   if(process.argv.includes('--demo'))await page.locator('#demo').check();
-  await click('create');
+  for(let i=1;i<=8;i++){
+    const phone=await session.openPhone(`phone${i}`);await phone.locator('#name').fill(`Spielperson ${i}`);await phone.locator('#seat').selectOption(String(i));await phone.locator('[data-action="register"]').click();await phone.getByText(`Hallo Spielperson ${i}`).waitFor();
+  }
+  await page.bringToFront();await page.locator('#assistant').selectOption({label:'Spielperson 1'});await click('create');
   for(let step=0;step<500;step++) {
     const g=publicView(session.app.getGame()!);
     const checkpoint=`${g.phase}:${g.night}:${g.day}`;
@@ -22,33 +25,25 @@ try {
     if(g.phase==='ended') {
       assert.ok(g.winner);
       assert.ok(session.app.ai.service(session.app.getGame()).spent>0,'Real AI usage must be recorded');
-      assert.ok(visits>=24,'Distribution and both night rounds were visited');
+      assert.ok(confirmations>=24,'All phones confirmed distribution and both shared night steps');
       assert.ok(ballots>0,'At least one ballot was confirmed');
       assert.ok(!session.events.some((e:any)=>e.kind==='pageerror'));
       await session.act({action:'resize',width:390,height:844});
       await session.act({action:'assert',noOverflow:true,noPageErrors:true});
-      result={status:'passed',winner:g.winner,steps:step,visits,ballots,ai:session.app.ai.service(session.app.getGame())};
+      result={status:'passed',winner:g.winner,steps:step,confirmations,ballots,ai:session.app.ai.service(session.app.getGame())};
       break;
     }
     if(g.announcement) {
       if(!await page.locator('[data-action="ack"]').count())await click('assistant');
       await click('ack');
-    } else if(g.nextPlayer) {
-      if(!await page.locator('[data-action="open-private"]').count())await click('home');
-      await click('open-private');
-      if(visits===0)await session.act({action:'observe'});
-      const targets=page.locator('[data-action="target"]:not(.selected)');
-      // Target buttons are ordinary visible controls. Select until Finish is enabled.
-      for(let i=0;await page.locator('[data-action="finish"]').isDisabled()&&await targets.count()&&i<3;i++) {
-        assert.ok(await targets.count(),'A required target must be selectable');
-        await targets.first().click();
+    } else if(['distribution','night_choices','night_results'].includes(g.phase)) {
+      for(let i=1;i<=8;i++){
+        const phone=session.pages[`phone${i}`];await phone.bringToFront();
+        if(await phone.locator('[data-action="reveal"]').count())await phone.locator('[data-action="reveal"]').click();
+        const submit=phone.locator('[data-action="submit"]');await submit.waitFor();
+        for(let n=0;await submit.isDisabled()&&n<3;n++)await phone.locator('[data-target]:not(.selected)').first().click();
+        await submit.click();await phone.locator('.working').waitFor({state:'hidden',timeout:55000});confirmations++;
       }
-      await page.locator('[data-action="finish"]').waitFor();
-      await page.waitForFunction(()=>!document.querySelector<HTMLButtonElement>('[data-action="finish"]')?.disabled,{},{timeout:20000});
-      await click('finish');
-      // Ravenkeeper can require a second confirmation after receiving information.
-      if(await page.locator('[data-action="finish"]').count())await click('finish');
-      visits++;
     } else if(g.phase==='discussion') {
       if(!await page.locator('[data-action="nominations"]').count())await click('assistant');
       await click('timer-toggle');
@@ -81,4 +76,4 @@ try {
   }
   assert.equal(result.status,'passed','Game must finish within the step limit');
   console.log(JSON.stringify({...result,output:session.output}));
-} catch(error) {result={status:'failed',error:String(error),visits,ballots};throw error;} finally {await session.close(result);}
+} catch(error) {result={status:'failed',error:String(error),confirmations,ballots};throw error;} finally {await session.close(result);}
