@@ -4,18 +4,21 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSyn
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { pool } from '../scripts/playtest-loop.ts';
+import { sequential } from '../scripts/playtest-loop.ts';
 
-test('rolling pool runs exactly ten agents with three active and fills free slots',async()=>{
-  let active=0,peak=0;const seen:number[]=[];const done:number[]=[];
-  await pool(10,3,async id=>{
-    seen.push(id);active++;peak=Math.max(peak,active);
-    await new Promise(ok=>setTimeout(ok,id===1?40:2));
-    active--;done.push(id);
+test('ten agents run sequentially and stop when a fix cannot be integrated',async()=>{
+  let active=0,peak=0;const seen:number[]=[];
+  await sequential(10,async id=>{
+    assert.equal(seen.length,id-1);
+    active++;peak=Math.max(peak,active);
+    await new Promise(ok=>setTimeout(ok,2));
+    seen.push(id);active--;
   });
-  assert.equal(peak,3);assert.equal(active,0);
+  assert.equal(peak,1);assert.equal(active,0);
   assert.deepEqual(seen,[1,2,3,4,5,6,7,8,9,10]);
-  assert.ok(done.indexOf(4)<done.indexOf(1));
+  const failed:number[]=[];
+  await sequential(10,async id=>{failed.push(id);return id!==2;});
+  assert.deepEqual(failed,[1,2]);
 });
 
 test('real controller isolates, validates and integrates ten fake agents without API calls',()=>{
@@ -30,6 +33,7 @@ const fs=require('fs');const path=require('path');
 if(process.argv.includes('--help'))process.exit(0);
 const cwd=process.argv[process.argv.indexOf('-C')+1];
 const id=path.basename(path.dirname(cwd)).replace('agent-','');
+for(let previous=1;previous<Number(id);previous++)if(!fs.existsSync(path.join(cwd,'fix-'+previous+'.txt')))process.exit(2);
 setTimeout(()=>{fs.writeFileSync(path.join(cwd,'fix-'+id+'.txt'),'fixed '+id);console.log(JSON.stringify({ok:true}));},40);
 `,{mode:0o755});
     command('git',['init','-q']);command('git',['add','.']);
@@ -39,6 +43,7 @@ setTimeout(()=>{fs.writeFileSync(path.join(cwd,'fix-'+id+'.txt'),'fixed '+id);co
     const dir=readdirSync(join(root,'test-results'))[0];
     const summary=JSON.parse(readFileSync(join(root,'test-results',dir,'summary.json'),'utf8'));
     assert.equal(summary.results.length,10);
+    assert.equal(summary.concurrency,1);
     assert.ok(summary.results.every((r:any)=>r.status==='merged'));
     for(let id=1;id<=10;id++)assert.equal(readFileSync(join(root,`fix-${id}.txt`),'utf8'),`fixed ${id}`);
     assert.equal(command('git',['status','--porcelain']),'');

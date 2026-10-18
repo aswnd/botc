@@ -2,23 +2,20 @@ import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync, openSync, closeSync, symlinkSync, existsSync, copyFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 
-export async function pool(total:number, concurrency:number, task:(id:number)=>Promise<void>) {
-  let next=1;
-  await Promise.all(Array.from({length:Math.min(total,concurrency)},async()=>{
-    while(next<=total)await task(next++);
-  }));
+export async function sequential(total:number, task:(id:number)=>Promise<boolean|void>) {
+  for(let id=1;id<=total;id++)if(await task(id)===false)break;
 }
 
 export async function main() {
   const args=process.argv.slice(2);
-  if(args.includes('--help')) {console.log('npm run playtest:loop -- [--total 10] [--concurrency 3] [--timeout-minutes 90]');return;}
+  if(args.includes('--help')) {console.log('npm run playtest:loop -- [--total 10] [--timeout-minutes 90]');return;}
   function option(name:string,fallback:number) {
     const i=args.indexOf(name), value=i<0?fallback:Number(args[i+1]);
     if(!Number.isInteger(value)||value<1)throw new Error(`Invalid ${name}`);
     return value;
   }
-  for(let i=0;i<args.length;i+=2)if(!['--total','--concurrency','--timeout-minutes'].includes(args[i]))throw new Error(`Unknown option ${args[i]}`);
-  const total=option('--total',10), concurrency=option('--concurrency',3), timeout=option('--timeout-minutes',90)*60000;
+  for(let i=0;i<args.length;i+=2)if(!['--total','--timeout-minutes'].includes(args[i]))throw new Error(`Unknown option ${args[i]}`);
+  const total=option('--total',10), concurrency=1, timeout=option('--timeout-minutes',90)*60000;
   const root=process.cwd();
   function git(cwd:string,...args:string[]) {
     const result=spawnSync('git',['-c','user.name=Playtest Automation','-c','user.email=playtest@localhost',...args],{cwd,encoding:'utf8'});
@@ -33,7 +30,6 @@ export async function main() {
   let interrupted=false;
   const interrupt=()=>{interrupted=true;process.exitCode=130;};
   process.on('SIGINT',interrupt);process.on('SIGTERM',interrupt);
-  let integration=Promise.resolve();
   const save=()=>writeFileSync(join(output,'summary.json'),JSON.stringify({total,concurrency,results},null,2));
   function run(command:string,args:string[],cwd:string,log:string,input?:string):Promise<void> {
     return new Promise((ok,fail)=>{
@@ -51,8 +47,8 @@ export async function main() {
     });
   }
   console.log(`Running ${total} agents, ${concurrency} at a time. Reports: ${output}`);
-  await pool(total,concurrency,async id=>{
-    if(interrupted)return;
+  await sequential(total,async id=>{
+    if(interrupted)return false;
     const directory=join(output,`agent-${id}`), workspace=join(directory,'workspace');
     mkdirSync(directory,{recursive:true});
     const result:any={id,status:'running',directory};results.push(result);save();
@@ -81,13 +77,12 @@ export async function main() {
           git(root,'merge','--ff-only',git(check,'rev-parse','HEAD'));
           result.status='merged';
         };
-        const pending=integration.then(integrate);
-        integration=pending.catch(()=>{});
-        await pending;
+        await integrate();
       }
     } catch(error) {result.status='failed';result.error=String(error);}
     result.finishedAt=new Date().toISOString();save();
     console.log(`Agent ${id}: ${result.status}${result.error?` (${result.error})`:''}`);
+    return !interrupted&&result.status!=='failed';
   });
   process.off('SIGINT',interrupt);process.off('SIGTERM',interrupt);
   if(results.some(r=>r.status==='failed'))process.exitCode=1;

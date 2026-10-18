@@ -150,12 +150,12 @@ broader oracle for role interactions and game rules (`npm test`). Browser voting
 assertions use a read-only public view; the LLM protocol exposes no engine mutation,
 JavaScript evaluation, secret database access, or direct game-command endpoint.
 
-## Rolling Codex test-and-fix loop
+## Sequential Codex test-and-fix loop
 
 ```bash
 npm run playtest:loop
-# Defaults: 10 agents total, up to 3 active, 90 minutes per command.
-npm run playtest:loop -- --total 10 --concurrency 3 --timeout-minutes 90
+# Defaults: 10 agents total, one active at a time, 90 minutes per command.
+npm run playtest:loop -- --total 10 --timeout-minutes 90
 ```
 
 Requires a clean committed Git checkout, installed dependencies and Chromium,
@@ -176,7 +176,8 @@ Each completed agent is checked with `npm test`. Fixes are committed and integra
 serially: cherry-pick into another isolated worktree based on the latest main
 checkout, run `npm test` again, then fast-forward the main checkout. A replacement
 starts after that agent's checks/integration finish and sees the newest merged
-fixes. Failed agents count toward the ten attempts. Conflicts, failed checks and
+fixes. The loop stops if an agent or integration fails, so later agents do not
+repeat work against an unfixed blocker. Conflicts, failed checks and
 concurrent user edits retain the worktree and commit for review, report failure,
 and never overwrite the main checkout. No changes is a valid result, but the
 agent's report must be read to distinguish completed coverage from a blocker.
