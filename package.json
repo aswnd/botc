@@ -1,0 +1,25 @@
+{
+  "name": "ravenswood-local",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "node --watch --env-file-if-exists=.env server/index.ts",
+    "start": "node --env-file-if-exists=.env server/index.ts",
+    "test": "node --test --test-isolation=none tests/*.test.ts",
+    "test:e2e": "node --test --test-isolation=none tests/browser.test.ts",
+    "test:live": "node --env-file-if-exists=.env scripts/live-smoke.ts",
+    "wiki:build": "node scripts/build-wiki.ts",
+    "check": "node --test --test-isolation=none tests/*.test.ts",
+    "audio:download": "node scripts/download-audio.ts",
+    "test:harness": "node --env-file-if-exists=.env scripts/harness-smoke.ts",
+    "test:playtest": "node --test tests/playtest.test.ts",
+    "playtest": "node --env-file-if-exists=.env scripts/playtest.ts"
+  },
+  "devDependencies": {
+    "playwright": "^1.64.1"
+  }
+}
