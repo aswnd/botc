@@ -36,9 +36,22 @@ test('Chromium: seven isolated phones join, recover, play nights and use private
   const recoveredContext=await browser.newContext({viewport:{width:320,height:844}}),replacement=await recoveredContext.newPage();
   await replacement.goto(base+'/join');await replacement.locator('summary').filter({hasText:'Mit Wiederherstellungscode'}).click();await replacement.locator('#recovery').fill(code);await replacement.locator('[data-action="recover"]').click();await replacement.locator('.character-card').waitFor();phones[0]=replacement;
   assert.equal(await replacement.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+  let rejectedRequests=0;
+  oldPhone.on('request',request=>{if(new URL(request.url()).pathname==='/api/player')rejectedRequests++;});
   await oldPhone.bringToFront();await oldPhone.reload();await oldPhone.locator('[role="alert"]').waitFor();assert.equal(await oldPhone.locator('.character-card').count(),0);
+  assert.equal(rejectedRequests,1);
+  // SSE refreshes and the polling interval must not retry a revoked credential.
+  await oldPhone.waitForTimeout(3500);
+  assert.equal(rejectedRequests,1);
+  await oldPhone.reload();await oldPhone.locator('#recovery').waitFor({state:'attached'});
+  assert.equal(rejectedRequests,1);
+  assert.equal(await oldPhone.locator('#recovery').inputValue(),code);
   for(const p of phones)await submit(p);
-  assert.equal(app.getGame()!.phase,'dawn');await laptop.bringToFront();await laptop.locator('[data-action="ack"]').click();
+  assert.equal(app.getGame()!.phase,'dawn');
+  await reveal(phones[0]);
+  await phones[0].getByText('Die Assistenz liest den Morgen vor.').waitFor();
+  assert.equal(await phones[0].locator('[role="status"]').count(),0,'Night readiness status must not persist into dawn');
+  await laptop.bringToFront();await laptop.locator('[data-action="ack"]').click();
   // Private Q&A uses the identity from the phone, independent of public control access.
   app.ai.answer=async(_g,k,q)=>{assert.equal(k.speaker.name,'Phone 1');return 'Eine öffentliche Regelantwort.';};
   await reveal(phones[0]);await phones[0].locator('summary').filter({hasText:'Private Regelfrage'}).click();await phones[0].locator('#question').fill('Was ist ein Bluff?');await phones[0].locator('[data-action="chat"]').click();await phones[0].getByText('Regelhilfe: Eine öffentliche Regelantwort.').waitFor();
