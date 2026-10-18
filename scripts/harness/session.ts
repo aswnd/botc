@@ -79,9 +79,13 @@ export async function startSession() {
           break;
         case 'fill':await locator!.fill(command.value);break;
         case 'select':await locator!.selectOption(command.value);break;
-        case 'check':await locator!.setChecked(command.checked??true);break;
+        case 'check':
+          // A change can replace the entire control tree, including its temporary
+          // harness IDs. setChecked re-resolves that stale ID after clicking.
+          if(await locator!.isChecked()!==(command.checked??true))await locator!.click();
+          break;
         case 'press':await (locator??page.locator('body')).press(command.key);break;
-        case 'reload':await page.reload();await page.locator('.connection.online').waitFor();break;
+        case 'reload':await page.reload();await page.locator('.connection.online').waitFor({state:'attached'});break;
         case 'resize':await page.setViewportSize({width:command.width,height:command.height});break;
         case 'wait':await page.waitForTimeout(Math.min(15000,Math.max(0,command.ms??250)));break;
         case 'assert': {

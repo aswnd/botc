@@ -30,6 +30,23 @@ test('legal generated setups for 7–10 players across 200 seeds',()=>{
     assert.equal(g.bluffs.length,3);assert.ok(g.bluffs.every(r=>!roles.includes(r)&&!g.players.some(p=>p.apparent===r)));assert.equal(g.players.find(p=>p.id===g.redHerring)!.team,'good');
   }assert.equal(observed.size,22);
 });
+test('Spy grimoire snapshots are available at night but hidden throughout the day',()=>{
+  const g=night(fixture(),2);asRole(g,5,'spy');
+  const snapshot=grimoire(g);
+  g.players[5].info=[{night:1,text:'Dein Grimoire.',grimoire:snapshot},{night:2,text:'Dein neues Grimoire.',grimoire:snapshot}];
+  for(const phase of ['night_choices','night_results'] as const){
+    g.phase=phase;
+    assert.ok(privateView(g,'p6').info.every(i=>i.grimoire?.length===7));
+  }
+  for(const phase of ['dawn','discussion','nominations'] as const){
+    g.phase=phase;
+    const info=privateView(g,'p6').info;
+    assert.equal(info.length,2);
+    assert.ok(info.every(i=>!('grimoire' in i)));
+    assert.equal(info[0].text,'Dein Grimoire.');
+  }
+  assert.deepEqual(g.players[5].info[0].grimoire,snapshot);
+});
 test('invalid input and role distributions are rejected',()=>{
   assert.throws(()=>makeGame({names:['A'],assistant:0}));assert.throws(()=>makeGame({names:['A','a','B','C','D','E','F'],assistant:0}));assert.throws(()=>makeGame({names:names.slice(0,7),assistant:12}));
 });
@@ -166,4 +183,22 @@ test('deterministic simulations reach a correct ending for each supported count'
     }
     assert.equal(g.phase,'ended',`count=${count},seed=${seed}`);assert.ok(g.winner);assert.ok(publicView(g).reveal);
   }
+});
+
+test('private storyteller notes flow between decisions and survive game storage',async()=>{
+  let calls=0;
+  const d:Decider=async r=>{
+    const context=r.context as {notes:string};
+    assert.equal(context.notes,calls?`Notiz ${calls}`:'');
+    calls++;
+    return {choice:r.fallback,reason:'Testentscheidung',notes:`Notiz ${calls}`};
+  };
+  const initial=night(fixture(),1);
+  asRole(initial,1,'investigator');
+  const g=await allVisits(initial,{},d);
+  assert.ok(calls>=2);
+  const restored=JSON.parse(JSON.stringify(g));
+  assert.equal(restored.decisions.at(-1).notes,`Notiz ${calls}`);
+  assert.ok(!JSON.stringify(publicView(g)).includes('Notiz'));
+  for(const p of g.players)assert.ok(!JSON.stringify(privateView(g,p.id)).includes('Notiz'));
 });

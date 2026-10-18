@@ -5,6 +5,31 @@ import { createInterface } from 'node:readline';
 import { once } from 'node:events';
 import { readFile, access } from 'node:fs/promises';
 import { join } from 'node:path';
+import { startSession } from '../scripts/harness/session.ts';
+
+test('check survives replacement of a checkbox and its temporary control ID', {timeout:30000}, async()=>{
+  const session=await startSession();
+  try {
+    // Vote updates replace the UI tree. Reproduce that lifecycle without a game
+    // or an AI call, preserving checked state but discarding temporary IDs.
+    await session.pages.laptop.evaluate(()=>{
+      const input=document.querySelector('#demo')!;
+      input.addEventListener('change',()=>{
+        const replacement=input.cloneNode(true) as HTMLInputElement;
+        replacement.removeAttribute('data-harness-id');
+        input.replaceWith(replacement);
+      },{once:true});
+    });
+    const initial=await session.observe();
+    const control=initial.laptop.controls.find(c=>c.type==='checkbox')!;
+    const checked=await session.act({action:'check',control:control.id,checked:true});
+    assert.equal(checked.laptop.controls.find(c=>c.type==='checkbox')!.checked,true);
+    const unchanged=await session.act({action:'check',selector:'#demo',checked:true});
+    assert.equal(unchanged.laptop.controls.find(c=>c.type==='checkbox')!.checked,true);
+    const cleared=await session.act({action:'check',selector:'#demo',checked:false});
+    assert.equal(cleared.laptop.controls.find(c=>c.type==='checkbox')!.checked,false);
+  } finally {await session.close({outcome:'regression-check'});}
+});
 
 test('playtest CLI reports server startup errors as JSON and exits unsuccessfully', {timeout:15000}, async()=>{
   const preload='import {Server} from "node:net"; Server.prototype.listen=function(){queueMicrotask(()=>this.emit("error",Object.assign(new Error("listen EPERM: injected denial"),{code:"EPERM"})));return this;}';
@@ -43,6 +68,15 @@ test('playtest JSON adapter operates both screens, recovers from invalid input a
     assert.ok(projector.step>initial.step);
     const reloaded=await command({action:'reload'});
     assert.ok(reloaded.laptop.controls.length>0);
+    for(const checked of [true,true,false]){
+      const toggled=await command({action:'check',selector:'#demo',checked});
+      assert.equal(toggled.error,undefined);
+      assert.equal(toggled.laptop.controls.find((c:any)=>c.type==='checkbox').checked,checked);
+    }
+    await command({action:'resize',width:390,height:844});
+    const mobileReload=await command({action:'reload'});
+    assert.equal(mobileReload.error,undefined,'online status is hidden by the mobile layout');
+    assert.equal(mobileReload.laptop.overflow,false);
     child.stdin.write(JSON.stringify({action:'finish',outcome:'pass',findings:[]})+'\n');
     const [code]=await exited;
     assert.equal(code,0,errors);

@@ -26,7 +26,9 @@ test('real controller isolates, validates and integrates ten fake agents without
   function command(bin:string,args:string[]){const r=spawnSync(bin,args,{cwd:root,encoding:'utf8'});assert.equal(r.status,0,r.stderr||r.stdout);return r.stdout;}
   try {
     mkdirSync(join(root,'bin'));mkdirSync(join(root,'node_modules'));
-    writeFileSync(join(root,'.gitignore'),'test-results/\nnode_modules/\n');
+    writeFileSync(join(root,'.gitignore'),'test-results/\nnode_modules/\ndata/\n.env\n');
+    writeFileSync(join(root,'.env'),'PLAYTEST_FIXTURE=private\n');
+    mkdirSync(join(root,'data'));writeFileSync(join(root,'data','private.txt'),'private');
     writeFileSync(join(root,'package.json'),JSON.stringify({scripts:{test:'node -e "process.exit(0)"'}}));
     writeFileSync(join(root,'bin','codex'),`#!/usr/bin/env node
 const fs=require('fs');const path=require('path');
@@ -34,6 +36,10 @@ if(process.argv.includes('--help'))process.exit(0);
 const cwd=process.argv[process.argv.indexOf('-C')+1];
 const id=path.basename(path.dirname(cwd)).replace('agent-','');
 for(let previous=1;previous<Number(id);previous++)if(!fs.existsSync(path.join(cwd,'fix-'+previous+'.txt')))process.exit(2);
+fs.mkdirSync(path.join(cwd,'data'),{recursive:true});
+fs.writeFileSync(path.join(cwd,'data','private.txt'),'private');
+fs.mkdirSync(path.join(cwd,'test-results'),{recursive:true});
+fs.writeFileSync(path.join(cwd,'test-results','artifact.txt'),'artifact');
 setTimeout(()=>{fs.writeFileSync(path.join(cwd,'fix-'+id+'.txt'),'fixed '+id);console.log(JSON.stringify({ok:true}));},40);
 `,{mode:0o755});
     command('git',['init','-q']);command('git',['add','.']);
@@ -47,5 +53,7 @@ setTimeout(()=>{fs.writeFileSync(path.join(cwd,'fix-'+id+'.txt'),'fixed '+id);co
     assert.ok(summary.results.every((r:any)=>r.status==='merged'));
     for(let id=1;id<=10;id++)assert.equal(readFileSync(join(root,`fix-${id}.txt`),'utf8'),`fixed ${id}`);
     assert.equal(command('git',['status','--porcelain']),'');
+    const tracked=command('git',['ls-files']).trim().split('\n');
+    assert.ok(tracked.every(file=>!['.env','data','test-results','node_modules'].includes(file.split('/')[0])));
   }finally{rmSync(root,{recursive:true,force:true});}
 });

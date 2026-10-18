@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { Storyteller } from '../server/ai.ts';
 import { rulesContext } from '../server/knowledge.ts';
 import { Store } from '../server/store.ts';
-import { makeGame,privateView,publicView } from '../server/engine.ts';
+import { makeGame,privateView,publicView,decisionContext } from '../server/engine.ts';
 
 function setup(fetcher:typeof fetch){const store=new Store(':memory:');const ai=new Storyteller(store,fetcher);ai.key='fake-test-key';const g=makeGame({names:['A','B','C','D','E','F','G','H'],assistant:0,roles:['chef','empath','fortune_teller','undertaker','virgin','drunk','scarlet_woman','imp'],minimumVisitMs:0});return {store,ai,g};}
 function response(value:unknown,input=100,output=100){return new Response(JSON.stringify({status:'completed',usage:{input_tokens:input,output_tokens:output},output:[{content:[{type:'output_text',text:JSON.stringify(value)}]}]}),{status:200});}
@@ -13,12 +13,12 @@ test('Q&A receives public knowledge without even the speaker’s apparent charac
   finally{store.close();}
 });
 test('illegal AI decisions fail instead of choosing locally',async()=>{
-  const {store,ai,g}=setup(async()=>response({choice:'illegal',reason:'test'}));
+  const {store,ai,g}=setup(async(_url,init)=>JSON.parse(String(init?.body)).text.format.name==='storyteller_plan'?response({plan:'Ein fairer Plan.'}):response({choice:'illegal',reason:'test'}));
   try{await assert.rejects(ai.decider(g)({key:'test',kind:'registration',prompt:'test',options:[{id:'yes',label:'yes'}],fallback:'yes'}),/ungültige/);}finally{store.close();}
 });
 test('decision wire IDs support quoted engine tuples and map back without changing the request',async()=>{
   let captured:any;
-  const {store,ai,g}=setup(async(_url,init)=>{captured=JSON.parse(String(init?.body));return response({choice:'option_1',reason:'Legale Anfangsinformation'});});
+  const {store,ai,g}=setup(async(_url,init)=>{captured=JSON.parse(String(init?.body));if(captured.text.format.name==='storyteller_plan')return response({plan:'Ein fairer Plan.'});return response({choice:'option_1',reason:'Legale Anfangsinformation',notes:'Hinweise abgestimmt.'});});
   const request={key:'pair',kind:'starting_information' as const,prompt:'Wähle eine Anfangsinformation.',options:[
     {id:JSON.stringify(['p1','p2','mayor']),label:'A oder B: Bürgermeister'},
     {id:JSON.stringify(['p2','p3','slayer']),label:'B oder C: Scharfschütze'},
@@ -68,5 +68,38 @@ test('game master narration uses a separate structured output schema and records
     assert.equal(context.audience,'public');assert.ok(!('grimoire' in context));
     assert.ok(context.state.players.every((p:any)=>!('role' in p)));
     assert.ok(store.spent(g.id)>0);
+  }finally{store.close();}
+});
+
+test('storyteller plans before deciding and reuses its saved plan with the full history',async()=>{
+  const calls:any[]=[];
+  const {store,ai,g}=setup(async(_url,init)=>{
+    const body=JSON.parse(String(init?.body));calls.push(body);
+    return response(body.text.format.name==='storyteller_plan'?{plan:'Hinweise aufeinander abstimmen und auf Vergiftung reagieren.'}:{choice:'option_0',reason:'Passt zum bisherigen Verlauf.',notes:'Spion-Hinweis später konsistent halten.'});
+  });
+  try {
+    const request={key:'first',kind:'registration',prompt:'Test',options:[{id:'yes',label:'Ja'}],fallback:'yes',context:decisionContext(g)};
+    const first=await ai.decider(g)(request);
+    assert.ok(first.plan);
+    g.decisions.push({key:'first',kind:'registration',...first});
+    for(let i=0;i<15;i++)g.decisions.push({key:String(i),kind:'registration',choice:'yes',reason:'Frühere Entscheidung'});
+    store.save(g);
+    const restored=store.load()!;
+    assert.equal(restored.decisions[0].plan,first.plan);
+    assert.equal(restored.decisions[0].notes,first.notes);
+    const next=await ai.decider(restored)({...request,key:'next',context:decisionContext(restored)});
+    assert.deepEqual(calls.map(c=>c.text.format.name),['storyteller_plan','storyteller_decision','storyteller_decision']);
+    const input=JSON.parse(calls[2].input);
+    assert.equal(input.plan,first.plan);
+    assert.equal(input.context.notes,first.notes);
+    assert.equal(next.notes,'Spion-Hinweis später konsistent halten.');
+    assert.ok(!('notes' in publicView(restored)));
+    assert.ok(!('notes' in privateView(restored,'p1')));
+    restored.decisions.push({key:'clear',kind:'registration',choice:'yes',reason:'clear',notes:''});
+    assert.equal(decisionContext(restored).notes,'');
+    assert.equal(input.context.recentDecisions.length,16);
+    assert.equal(input.context.recentDecisions[0].key,'first');
+    assert.equal(next.plan,undefined);
+    assert.ok(!('decisions' in publicView(g)));
   }finally{store.close();}
 });

@@ -37,3 +37,9 @@
 .tutorial-projector progress{margin:.5rem 0 1rem}
 
 .projector-tools{flex-wrap:wrap;justify-content:flex-end}.projector-tools [data-music-status]{flex-basis:100%;text-align:right;color:var(--muted);font-size:10px}
+
+/* Navigation must wrap below the brand on narrow shared terminals. */
+@media(max-width:760px){
+  .topbar{height:auto;min-height:80px;flex-wrap:wrap;gap:12px;padding:16px 20px}
+  .topbar nav{flex-wrap:wrap;max-width:100%}
+}

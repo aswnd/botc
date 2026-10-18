@@ -24,13 +24,14 @@ async function decide(g:Game,d:Decider,r:DecisionRequest):Promise<string> {
   requireThat(r.options.length>0&&r.options.some(o=>o.id===r.fallback),'Keine legale Spielleitungsentscheidung verfügbar.');
   const a=await d(structuredClone({...r,context:decisionContext(g,r.context)}));
   requireThat(a&&typeof a.reason==='string'&&r.options.some(o=>o.id===a.choice),'Die KI hat eine ungültige Entscheidung geliefert. Bitte erneut versuchen.');
-  g.decisions.push({key:r.key,kind:r.kind,choice:a.choice,reason:String(a.reason).slice(0,500)});return a.choice;
+  requireThat(a.notes===undefined||(typeof a.notes==='string'&&a.notes.length<=12000),'Die KI hat ungültige Spielleitungsnotizen geliefert. Bitte erneut versuchen.');
+  g.decisions.push({key:r.key,kind:r.kind,choice:a.choice,reason:String(a.reason).slice(0,500),...(a.plan?{plan:a.plan}:{}),...(a.notes!==undefined?{notes:a.notes}:{})});return a.choice;
 }
 export function decisionContext(g:Game,request:unknown=null):DecisionContext {
   return structuredClone({schemaVersion:1,gameId:g.id,phase:g.phase,night:g.night,day:g.day,
     grimoire:grimoire(g),choices:g.choices,redHerring:g.redHerring,bluffs:g.bluffs,
     information:g.players.map(p=>({playerId:p.id,apparent:p.apparent,history:p.info})),
-    recentDecisions:g.decisions.slice(-12),request});
+    notes:g.decisions.findLast(record=>record.notes!==undefined)?.notes??'',recentDecisions:g.decisions,request});
 }
 function options(items:string[]) {return [...new Set(items)].map(id=>({id,label:id}));}
 export function makeGame(input:{names:string[];assistant:number;demo?:boolean;seed?:number;minimumVisitMs?:number;roles?:Role[]}):Game {
@@ -79,7 +80,11 @@ export function privateView(g:Game,id:string):PlayerPrivateView {
   }
   if(p.notifiedRole!==p.apparent)opening.push(`Dein Charakter hat sich geändert: Du bist jetzt ${ROLE[p.apparent].name}.`);
   if(p.apparent==='butler'&&p.master)opening.push(`Deine zuletzt gewählte Person: ${player(g,p.master).name}. Beachte beim Abstimmen deine Fähigkeit, solange du lebst.`);
-  const info=p.info.filter(i=>g.phase==='night_results'||!['night_choices','distribution'].includes(g.phase)||i.night<g.night);
+  const info=p.info.filter(i=>g.phase==='night_results'||!['night_choices','distribution'].includes(g.phase)||i.night<g.night).map(i=>{
+    if(g.phase==='night_choices'||g.phase==='night_results'||g.phase==='ended')return i;
+    const {grimoire,...information}=i;
+    return information;
+  });
   return {id:p.id,name:p.name,character:ROLE[p.apparent],team:p.team,info:structuredClone(info),opening,action:privateAction(g,p),targets:g.players.map(x=>({id:x.id,name:x.name,seat:x.seat,alive:!g.publicDead.includes(x.id),ghostVote:x.ghostVote})),phase:g.phase,night:g.night,history:[],minimumVisitMs:g.minimumVisitMs};
 }
 export function grimoire(g:Game):GrimoireEntry[] {return g.players.map(p=>({id:p.id,name:p.name,seat:p.seat,character:p.role,team:p.team,alive:p.alive,markers:[...(p.role==='drunk'?[`Hält sich für ${ROLE[p.apparent].name}`]:[]),...(poisoned(g,p)?['Vergiftet']:[]),...(g.protection?.target===p.id&&active(g,player(g,g.protection.source))?['Geschützt']:[]),...(g.redHerring===p.id?['Falsche Fährte']:[]),...(p.master?[`Butler folgt ${player(g,p.master).name}`]:[]),...(g.infoMarkers?.[p.id]??[])]}));}
@@ -96,7 +101,7 @@ function startNight(g:Game,precedingText='') {
   transition(g,'night_choices');g.night++;g.queueIndex=0;g.choices={};g.resultDone=[];g.nightDeaths=[];g.ravenPending=[];g.ravenPoisoned={};g.nightStartAlive=living(g).map(p=>p.id);g.poison=undefined;g.protection=undefined;g.nightExecuted=g.executed;g.executed=undefined;g.timer={remainingMs:420000,deadline:null};
   announce(g,`Nacht ${g.night}`, precedingText+'Die Nacht beginnt. Bitte nicht miteinander sprechen. Jede Person besucht den Laptop zweimal. In Runde A trefft ihr Entscheidungen, in Runde B erhaltet ihr Ergebnisse. Auch wer tot ist oder keine nächtliche Fähigkeit hat, kommt in beiden Runden. Achtet auf euren Namen am Beamer.');
 }
-function finish(g:Game,winner:'good'|'evil',reason:string) {transition(g,'ended');g.winner=winner;g.endReason=reason;g.publicDead=g.players.filter(p=>!p.alive).map(p=>p.id);g.timer.deadline=null;event(g,reason);announce(g,winner==='good'?'Das Gute gewinnt':'Das Böse gewinnt',reason+' Alle Charaktere werden jetzt aufgedeckt.');}
+function finish(g:Game,winner:'good'|'evil',reason:string) {transition(g,'ended');g.winner=winner;g.endReason=reason;g.publicDead=g.players.filter(p=>!p.alive).map(p=>p.id);g.timer.deadline=null;event(g,reason);announce(g,winner==='good'?'Die Dorfbewohner gewinnen':'Die Bösen gewinnen',reason+' Alle Charaktere werden jetzt aufgedeckt.');}
 function victory(g:Game) {if(g.phase==='ended')return; if(!living(g).some(p=>p.role==='imp'))finish(g,'good','Kein Dämon lebt mehr.');else if(living(g).length<=2)finish(g,'evil','Nur noch zwei Personen leben und der Dämon hat überlebt.');}
 async function register(g:Game,p:Player,category:'alignment'|'character'|'townsfolk'|'demon',key:string,d:Decider):Promise<string> {
   const actual=category==='alignment'?p.team:category==='character'?p.role:category==='townsfolk'?String(ROLE[p.role].category==='townsfolk'):String(p.role==='imp');
@@ -203,7 +208,7 @@ async function resolveNight(g:Game,d:Decider) {
   for(const p of g.players.filter(p=>p.alive&&p.apparent==='empath')) {
     const alive=living(g);const i=alive.findIndex(x=>x.id===p.id);const neighbors=[alive[(i-1+alive.length)%alive.length],alive[(i+1)%alive.length]];
     let n=0;for(const t of neighbors)n+=Number((await register(g,t,'alignment',`${g.night}:empath:${p.id}:${t.id}`,d))==='evil');
-    pushInfo(g,p,`Böse unter deinen zwei lebenden Nachbarn: ${await numberInfo(g,p,n,2,`${g.night}:empath:${p.id}:number`,d)}.`);
+    pushInfo(g,p,`Personen aus dem Team „die Bösen“ unter deinen zwei lebenden Nachbarn: ${await numberInfo(g,p,n,2,`${g.night}:empath:${p.id}:number`,d)}.`);
   }
   for(const p of g.players.filter(p=>p.alive&&p.apparent==='fortune_teller')) {
     const targets=g.choices[p.id]??[];let yes=false;
@@ -298,7 +303,7 @@ async function reduceCommand(original:Game,command:Command,d:Decider,now:number)
       }else if(type==='close_day') {
         requireThat(g.phase==='nominations'&&!g.nomination,'Bitte erst alle Abstimmungen abschließen.');const s=executionStanding(g);
         if(s.executionCandidate)await kill(g,player(g,s.executionCandidate),'execution',d);
-        else if(living(g).length===3&&living(g).some(p=>p.role==='mayor'&&active(g,p)))finish(g,'good','Drei Personen leben und niemand wurde hingerichtet: Der Bürgermeister gewinnt für Gut.');
+        else if(living(g).length===3&&living(g).some(p=>p.role==='mayor'&&active(g,p)))finish(g,'good','Drei Personen leben und niemand wurde hingerichtet: Der Bürgermeister gewinnt für die Dorfbewohner.');
         if(g.phase!=='ended')startNight(g,s.executionCandidate?`${player(g,s.executionCandidate).name} wurde hingerichtet.\n\n`:'Heute wurde niemand hingerichtet.\n\n');
       }else if(type==='slayer') {
         requireThat(['discussion','nominations'].includes(g.phase)&&!g.nomination,'Ein öffentlicher Schuss ist jetzt nicht möglich.');

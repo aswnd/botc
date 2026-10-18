@@ -1,4 +1,5 @@
 import {tutorialSteps} from '../src/tutorial.js';
+import {CHARACTERS,RULES} from '../shared/characters.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -50,6 +51,13 @@ test('Chromium: setup, no-PIN handovers, two night rounds, projector cues, timer
     try{await browser.send('Browser.getVersion');}catch(e){if(browser.errors.join('').includes('Operation not permitted')){t.skip('The sandbox blocks Chromium socket operations. Run npm run test:e2e on the laptop outside this sandbox.');return;}throw e;}
     await mkdir(resolve('test-results'),{recursive:true});
     const laptop=await browser.page(app,'/');await laptop.screenshot(resolve('test-results/setup.png'));
+    // The full header must fit without clipping or hiding any navigation control.
+    for(const width of [320,390,760]){
+      await browser.send('Emulation.setDeviceMetricsOverride',{width,height:844,deviceScaleFactor:1,mobile:false},laptop.sessionId);
+      assert.equal(await laptop.evaluate('document.documentElement.scrollWidth>innerWidth'),false,`setup overflow at ${width}px`);
+      assert.ok(await laptop.evaluate('Array.from(document.querySelectorAll(".topbar nav button,.topbar nav a")).every(e=>{const r=e.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.height>0})'));
+    }
+    await browser.send('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false},laptop.sessionId);
     await laptop.evaluate(`document.querySelector('#assistant').value='1';document.querySelector('#assistant').dispatchEvent(new Event('change',{bubbles:true}));var input=document.querySelector('[data-name-index="1"]');input.focus();input.value='Renée <&>';input.dispatchEvent(new Event('input',{bubbles:true}));`);
     assert.equal(await laptop.evaluate('document.querySelector("#assistant").selectedOptions[0].textContent'),'Renée <&>');
     assert.equal(await laptop.evaluate('document.activeElement.dataset.nameIndex'),'1');
@@ -59,7 +67,7 @@ test('Chromium: setup, no-PIN handovers, two night rounds, projector cues, timer
     const beamer=await browser.page(app,'/projector',1920,1080);await beamer.evaluate(`window.musicElements=[];const NativeAudio=window.Audio;window.Audio=function(url){const audio=new NativeAudio(url);window.musicElements.push(audio);return audio;};`);await beamer.click('[data-action="audio"]');await beamer.wait('window.musicElements[0]?.currentTime>0.1&&!window.musicElements[0].paused');assert.ok(await beamer.evaluate('document.body.innerText.includes("Tontest")'));
     await laptop.click('[data-action="tutorial-start"]');
     await beamer.wait('!!document.querySelector(".tutorial-projector")');
-    assert.equal(await laptop.evaluate('document.querySelectorAll(".tutorial-library details").length'),29);
+    assert.equal(await laptop.evaluate('document.querySelectorAll(".tutorial-library details").length'),CHARACTERS.length+RULES.length);
     await laptop.evaluate('document.querySelector(".tutorial-library details").open=true');
     assert.ok(await laptop.evaluate('document.body.innerText.includes("Beispiel:")'));
     const lesson=tutorialSteps(['Anna','Ben','Clara','David','Emilia','Felix','Greta','Hannes']);
@@ -95,6 +103,9 @@ test('Chromium: setup, no-PIN handovers, two night rounds, projector cues, timer
       await laptop.click('[data-action="finish"]');await laptop.wait('!document.querySelector(".private-layout")');
     }
     await laptop.click('[data-action="assistant"]');await laptop.click('[data-action="ack"]');await laptop.wait('!!document.querySelector("[data-clock]")');
+    await browser.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:false},laptop.sessionId);
+    assert.equal(await laptop.evaluate('document.documentElement.scrollWidth>innerWidth'),false,'discussion assistant overflow at 390px');
+    await browser.send('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false},laptop.sessionId);
     await beamer.wait('window.musicElements.at(-1)?.src.includes("182_Country_Village")&&!window.musicElements.at(-1).paused&&window.musicElements.at(-1).currentTime>.1');
     await beamer.wait('!!document.querySelector(".timer.large")');await beamer.wait('document.querySelector("[data-attention]").hidden');await beamer.screenshot(resolve('test-results/projector.png'));
     await laptop.click('[data-action="timer-toggle"]');assert.equal(app.getGame()!.timer.deadline,null);await laptop.click('[data-action="plus-minute"]');assert.ok(app.getGame()!.timer.remainingMs>420000);

@@ -55,7 +55,7 @@ test('actual UI templates and actions run a complete first-night handover flow',
     await ui.click('assistant');await ui.click('ack');await ui.click('nominations');await ui.click('ack');ui.change('nominator','p2');ui.change('nominee','p7');await ui.click('nominate');await ui.click('ack');
     const finalVote=await request(ui.app,'/api/command',{method:'POST',data:{version:ui.app.getGame()!.version,commandId:crypto.randomUUID(),command:{type:'vote_draft',voters:['p2','p3','p4']}}});ui.h.accept(finalVote.json());
     await ui.click('vote-confirm');await ui.click('ack');await ui.click('close-day');await ui.click('home');
-    assert.equal(ui.app.getGame()!.winner,'good');assert.match(ui.h.html,/Das Gute gewinnt/);assert.match(ui.h.html,/reveal-card/);assert.match(ui.h.html,/Was in den Nächten geschah/);
+    assert.equal(ui.app.getGame()!.winner,'good');assert.match(ui.h.html,/Die Dorfbewohner gewinnen/);assert.match(ui.h.html,/reveal-card/);assert.match(ui.h.html,/Was in den Nächten geschah/);
   }finally{await ui.close();}
 });
 test('private rule citations are readable and model HTML stays escaped',async()=>{

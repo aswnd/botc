@@ -62,7 +62,9 @@ export async function main() {
       console.log(`Agent ${id} started`);
       await run('codex',['exec','-c','approval_policy="never"','--skip-git-repo-check','--sandbox','danger-full-access','--json','-C',workspace,'-o',join(directory,'report.md'),'-'],workspace,join(directory,'events.jsonl'),prompt);
       await run('npm',['test'],workspace,join(directory,'tests.log'));
-      git(workspace,'add','--all','--','.',':!node_modules',':!.env',':!data',':!test-results');
+      const files=git(workspace,'ls-files','-z','--cached','--others','--exclude-standard').split('\0')
+        .filter(file=>file&&!['node_modules','.env','data','test-results'].includes(file.split('/')[0]));
+      if(files.length)git(workspace,'add','--all','--',...files);
       if(!git(workspace,'diff','--cached','--name-only'))result.status='no-changes';
       else {
         git(workspace,'commit','-m',`Playtest agent ${id}: fix observed issues`);

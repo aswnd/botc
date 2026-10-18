@@ -4,9 +4,9 @@ export type CueKind = 'night' | 'player' | 'assistant' | 'attention' | 'timer';
 export type Information = { night: number; text: string; grimoire?: GrimoireEntry[] };
 export type GrimoireEntry = { id:string; name:string; seat:number; character:Role; team:Team; alive:boolean; markers:string[] };
 export type Player = { id:string; name:string; seat:number; role:Role; apparent:Role; team:Team; alive:boolean; ghostVote:boolean; usedSlayer:boolean; usedVirgin:boolean; info:Information[]; notifiedRole:Role; master?:string };
-export type DecisionRecord = { key:string; kind:string; choice:string; reason:string };
+export type DecisionRecord = { key:string; kind:string; choice:string; reason:string; plan?:string;notes?:string };
 export type DecisionRequest = { key:string; kind:string; prompt:string; options:{id:string;label:string}[]; fallback:string; context?:unknown };
-export type Decider = (request:DecisionRequest) => Promise<{choice:string;reason:string}>;
+export type Decider = (request:DecisionRequest) => Promise<{choice:string;reason:string;plan?:string;notes?:string}>;
 export type Command = { type:string; [key:string]:unknown };
 export type Game = {
   id:string; version:number; seed:number; demo:boolean; createdAt:number; phase:Phase; night:number; day:number;
@@ -41,7 +41,7 @@ export type DecisionContext = {
   schemaVersion:1; gameId:string; phase:Phase; night:number; day:number;
   grimoire:GrimoireEntry[]; choices:Record<string,string[]>;
   information:{playerId:string;apparent:Role;history:Information[]}[];
-  redHerring:string; bluffs:Role[]; recentDecisions:DecisionRecord[]; request:unknown;
+  redHerring:string; bluffs:Role[]; notes:string; recentDecisions:DecisionRecord[]; request:unknown;
 };
 export type NarrationRequest = {
   schemaVersion:1; audience:'public'; language:'de';
