@@ -20,9 +20,9 @@ The German walkthrough is in [docs/ERSTE_RUNDE.md](docs/ERSTE_RUNDE.md).
 
 Copy `.env.example` to `.env` and set `OPENAI_API_KEY` and optionally `OPENAI_MODEL`. Restart the server after changing them. AI configuration is read only from environment variables; the website has no configuration controls.
 
-The default is `gpt-5-mini` using the Responses API and structured outputs. The AI chooses only from engine-generated legal Storyteller options and answers private questions in German. Q&A receives only the speaker’s identity, an allowlisted public game view, public character rules, and retrieved manual excerpts. It receives no assigned or perceived character, team, private information, Spy Grimoire, evil introductions, hidden markers, or prior chat. Each question should be self-contained; history is displayed locally only. Storyteller decision requests can contain secret game state. Player names and the relevant game context are sent to OpenAI when online mode is used.
+The game master defaults to `gpt-6.1-sol`; private Q&A defaults to `gpt-6-luna` (configurable with `OPENAI_QA_MODEL`, `OPENAI_QA_INPUT_PRICE`, and `OPENAI_QA_OUTPUT_PRICE`). Both use the Responses API and structured outputs. The AI chooses only from engine-generated legal Storyteller options and answers private questions in German. Q&A receives only the speaker’s identity, an allowlisted public game view, public character rules, and retrieved manual excerpts. It receives no assigned or perceived character, team, private information, Spy Grimoire, evil introductions, hidden markers, or prior chat. Each question should be self-contained; history is displayed locally only. Storyteller decision requests can contain secret game state. Player names and the relevant game context are sent to OpenAI when online mode is used.
 
-AI requests require a key. Transient failures retry once; missing credentials, exhausted credits, and API errors stop the action with an error and preserve the saved game. There is no local AI fallback or application spending cap. Your OpenAI API credits determine availability.
+AI requests require a key. Transient failures retry once; missing credentials, exhausted credits, and API errors stop the action with an error and preserve the saved game. Fast nights are an explicit local rules mode, not an AI failure fallback. AI mode never silently falls back. There is no application spending cap. Your OpenAI API credits determine availability.
 
 Estimated spending is displayed for information only. Input/output rates are configurable in `.env` and never limit requests.
 
@@ -30,9 +30,10 @@ Estimated spending is displayed for information only. Input/output rates are con
 
 - Connect phones and laptop to the same Wi-Fi. The laptop displays local join links and a QR code; players open `/join` on their own phones.
 - Each player enters their name and numbered clockwise seat. Check the seating circle together. The laptop chooses the assistant and starts once 7–10 players occupy consecutive seats.
-- Read and confirm roles on phones. Keep recovery codes private; they restore the same player on another browser.
+- Read and confirm roles on phones. The phone saves its private identifier in local storage and logs back in automatically.
 - At nightfall everyone opens their phone and keeps the game page visible. Stay seated; no closed eyes or individual notifications are needed.
-- Everyone submits a choice or readiness, including dead players. The system resolves choices in character order, then delivers results together. Everyone confirms reading before dawn. There are no named queues or minimum visit times.
+- Night is one continuous phone session. Submit your role action or find six symbols in the night game to confirm readiness automatically, including dead players. Keep playing while others finish. New private information interrupts the game and requires acknowledgement; players without new information need no second confirmation. The activity has no effect on roles or abilities. There are no named queues or minimum visit times.
+- **Schnelle Nächte** is enabled by default for new phone rounds: legal Storyteller choices use the engine’s seeded local defaults, without network requests or AI planning. Disable it at setup or use the host’s **Nachtmodus** control for individual AI night decisions. A submission returns immediately even in AI mode; resolution runs in the background and accepted choices remain durable.
 - The Ravenkeeper preselects a target each night and learns that character only if killed that night. This is an explicit choice-timing adaptation.
 - During the day, private rules questions stay on phones. Nominations and raised-hand votes stay in the room; the assistant records and confirms them on the laptop.
 - The assistant explicitly closes the day. Timer expiry never makes that decision automatically.
@@ -41,7 +42,7 @@ Sound is synthesized locally with Web Audio. The projector has volume, mute (vol
 
 ## Recovery and persistence
 
-Lobbies, player credentials, choices, confirmed transitions, votes, and accepted AI decisions persist in `data/game.sqlite`. Restart the server to resume. A refresh keeps the same phone identity. Hiding the tab conceals private content without logging out; reopen it with the reveal button. A private recovery code rotates the device credential when switching browsers.
+Lobbies, player credentials, choices, confirmed transitions, votes, and accepted AI decisions persist in `data/game.sqlite`. Restart the server to resume. A refresh keeps the same phone identity. Hiding the tab conceals private content without logging out; reopen it with the reveal button. Each phone keeps its private identifier in local storage for automatic login.
 
 If AI resolution fails, all submitted choices remain saved. Use **Auflösung erneut versuchen** on the laptop. Disconnected players are never skipped automatically. Existing shared-laptop saves remain archived; begin a fresh phone game.
 
