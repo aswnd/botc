@@ -224,3 +224,41 @@ test('host can switch an existing night to local mode without discarding accepte
   assert.equal(app.getGame()!.fastNight,false);
  }finally{await app.close();}
 });
+
+test('phone-only leader route and authenticated daytime actions',async()=>{
+ const app=testApp({dbPath:':memory:',legacyApi:false});try{
+  const leader=await request(app,'/leader',{remoteAddress:'192.168.1.42'});assert.equal(leader.status,200);assert.ok(leader.body.includes('/src/app.js'));
+  const token=(await request(app,'/api/leader',{remoteAddress:'192.168.1.42'})).json().token;assert.ok(token);
+  const ms=await start(app);const g=app.getGame()!;
+  g.phase='dawn';g.announcement={title:'Morgen',text:'Vorlesen'};
+  await ack(app);assert.equal(app.getGame()!.phase,'discussion');assert.equal(app.getGame()!.timer.deadline,null);
+  const current=app.getGame()!;current.players[0].role='slayer';current.players[0].usedSlayer=false;current.players[2].role='imp';
+  const target=current.players.find(p=>p.role==='imp')!;assert.ok(target);
+  const input={gameId:current.id,version:current.version,action:'slayer',target:target.id,playerId:current.players[0].id};
+  assert.equal((await post(app,'/api/player/day-action',input)).status,400);
+  assert.equal((await post(app,'/api/player/day-action',{...input,version:-1},ms[1].token)).status,400);
+  assert.equal((await post(app,'/api/player/day-action',input,ms[1].token)).status,200);
+  assert.equal(app.getGame()!.players[0].usedSlayer,false,'client cannot shoot as another player');
+  assert.ok(app.getGame()!.events.some(e=>e.text.includes('Person 2 erklärt einen Schuss')));
+  assert.equal((await post(app,'/api/player/day-action',input,ms[1].token)).status,400,'stale retry cannot repeat a shot');
+ }finally{await app.close();}
+});
+
+test('player photos are authenticated, validated, public and durable across restart',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'clocktower-photos-')),dbPath=join(dir,'game.sqlite');let app=testApp({dbPath,legacyApi:false});
+ try{
+  const ms=await register(app);const photo='data:image/jpeg;base64,/9j/2Q==';
+  assert.equal((await post(app,'/api/player/photo',{photo})).status,400);
+  for(const bad of ['data:image/svg+xml;base64,AAAA','data:image/jpeg;base64,AAAA',photo+'A'.repeat(60000)])assert.equal((await post(app,'/api/player/photo',{photo:bad},ms[0].token)).status,400);
+  assert.equal((await post(app,'/api/player/photo',{photo},ms[0].token)).status,200);
+  const url=(await state(app)).lobby.members[0].photo;assert.match(url,/^\/api\/avatar\//);
+  assert.equal((await request(app,url)).headers['Content-Type'],'image/jpeg');
+  assert.equal((await state(app)).lobby.members[1].photo,undefined);
+  await host(app,'/api/lobby/assistant',{id:ms[0].identity.id});await host(app,'/api/lobby/start',{demo:false});
+  assert.equal((await state(app)).game.players[0].photo,url);
+  await app.close();app=testApp({dbPath,legacyApi:false});
+  assert.equal((await state(app)).game.players[0].photo,url);assert.equal((await request(app,url)).status,200);
+  assert.equal((await post(app,'/api/player/photo',{photo},ms[0].token)).status,200);
+  assert.notEqual((await state(app)).game.players[0].photo,url,'replacement updates the public player');
+ }finally{await app.close();await rm(dir,{recursive:true,force:true});}
+});

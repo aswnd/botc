@@ -1,20 +1,22 @@
 # Ravenswood · Trouble Brewing
 
-A German, in-person Blood on the Clocktower game for 7–10 players. Your laptop runs the server and public assistant controls; a second browser window on a projector shows the public town square. Players join and play privately on their phones over the same Wi-Fi. Everyone can play, including the assistant who reads public announcements and records votes.
+A German, in-person Blood on the Clocktower game for 7–10 players, played entirely on phones. The laptop only runs the server.
 
 ## Start
 
-Requires **Node.js 24 or newer** and a modern browser. Node 26 is installed on this laptop. There are no packages to download and no build step.
+Requires **Node.js 24 or newer**.
 
 ```bash
 npm start
 ```
 
-Open **http://127.0.0.1:3000** on the laptop. Click **Beamer öffnen**, move that window to the projector, and enable sound there. Use an extended desktop, rather than mirrored displays. Keep the server terminal running; stop it with Ctrl+C.
+Keep the laptop running and connect all phones to the same Wi-Fi. On the leader phone open **http://LAPTOP-IP:3000/leader**. Players open **http://LAPTOP-IP:3000/** (or `/join`). The leader screen shows join links and a QR code.
 
-For your first rehearsal, tick **Proberunde**. This makes all characters public. Start a fresh, non-demo round before playing with friends. A seven-minute discussion timer starts after the assistant reads the dawn announcement.
+The leader also joins as a player through **Meine Spieleransicht**. Register a name and clockwise seat, then return to `/leader` to select the assistant and start with 7–10 registered players. **Leitung / Tagesablauf** on that phone returns to the separate public control screen; private role information stays in the player view.
 
-The German walkthrough is in [docs/ERSTE_RUNDE.md](docs/ERSTE_RUNDE.md).
+Read announcements, open nominations, record raised-hand votes, and close the day on the leader phone. Discussion has no timer. Players declare daytime Slayer shots on their own phones; every player can make this public claim to allow bluffing. Say the shot aloud before confirming it. The engine determines its effect without confirming the shooter's role.
+
+This is trusted local Wi-Fi play: `/leader` grants game controls to anyone in the group who opens it. No laptop browser or projector is needed. Keep the server terminal running; stop with Ctrl+C.
 
 ## AI setup
 
@@ -26,29 +28,19 @@ AI requests require a key. Transient failures retry once; missing credentials, e
 
 Estimated spending is displayed for information only. Input/output rates are configurable in `.env` and never limit requests.
 
-## Playing
+## Playing and recovery
 
-- Connect phones and laptop to the same Wi-Fi. The laptop displays local join links and a QR code; players open `/join` on their own phones.
-- Each player enters their name and numbered clockwise seat. Check the seating circle together. The laptop chooses the assistant and starts once 7–10 players occupy consecutive seats.
-- Read and confirm roles on phones. The phone saves its private identifier in local storage and logs back in automatically.
-- At nightfall everyone opens their phone and keeps the game page visible. Stay seated; no closed eyes or individual notifications are needed.
-- Night is one continuous phone session. Submit your role action or find six symbols in the night game to confirm readiness automatically, including dead players. Keep playing while others finish. New private information interrupts the game and requires acknowledgement; players without new information need no second confirmation. The activity has no effect on roles or abilities. There are no named queues or minimum visit times.
-- **Schnelle Nächte** is enabled by default for new phone rounds: legal Storyteller choices use the engine’s seeded local defaults, without network requests or AI planning. Disable it at setup or use the host’s **Nachtmodus** control for individual AI night decisions. A submission returns immediately even in AI mode; resolution runs in the background and accepted choices remain durable.
-- The Ravenkeeper preselects a target each night and learns that character only if killed that night. This is an explicit choice-timing adaptation.
-- During the day, private rules questions stay on phones. Nominations and raised-hand votes stay in the room; the assistant records and confirms them on the laptop.
-- The assistant explicitly closes the day. Timer expiry never makes that decision automatically.
+- Register names and consecutive clockwise seats on player phones. Each player uploads a photo through **Dein Spielerfoto**; photos are cropped and resized locally, saved on the laptop server, and shown beside names in nomination buttons, voting lists, and night targets. Players can replace their photo from their phone. The leader selects the assistant and starts the game on `/leader`.
+- Read and confirm roles privately. Phone credentials are saved locally for automatic reconnection.
+- At night everyone stays on their phone, including dead players. Submit the role action or complete the symbol activity. New private information requires acknowledgement.
+- **Schnelle Nächte** uses local legal choices without AI requests. Disable it for AI night decisions. The Ravenkeeper preselects a target and receives information only if killed that night.
+- The leader reads announcements and records nominations and raised-hand votes. Votes can be corrected before confirmation. Dead players spend their last vote only when confirmed.
+- Players declare daytime shots through their own phone screen. The leader reads the resulting announcement.
+- The leader opens nominations and explicitly closes the day. There is no discussion countdown.
 
-Sound is synthesized locally with Web Audio. The projector has volume, mute (volume zero), replay, and fullscreen controls. Distinct cues mark nightfall, the next player, an assistant announcement, public attention, and the end of discussion. Browsers require a click on **Ton aktivieren** before sound can play. Choose the projector's audio output in your normal system settings.
+Game state and credentials persist in `data/game.sqlite`. Restarting the server resumes the saved round. If night resolution fails, use **Auflösung erneut versuchen** on `/leader`. Starting a new round archives the old game.
 
-## Recovery and persistence
-
-Lobbies, player credentials, choices, confirmed transitions, votes, and accepted AI decisions persist in `data/game.sqlite`. Restart the server to resume. A refresh keeps the same phone identity. Hiding the tab conceals private content without logging out; reopen it with the reveal button. Each phone keeps its private identifier in local storage for automatic login.
-
-If AI resolution fails, all submitted choices remain saved. Use **Auflösung erneut versuchen** on the laptop. Disconnected players are never skipped automatically. Existing shared-laptop saves remain archived; begin a fresh phone game.
-
-The server listens on `0.0.0.0` by default. Open the laptop controls through `http://127.0.0.1:3000`; only a loopback connection can obtain the host credential. Phones use the displayed LAN address. Allow the port through your firewall if necessary; guest Wi-Fi client isolation can prevent joining. This is local HTTP play, not public internet hosting. QR generation uses the installed `qrencode` command; the printed join links also work directly.
-
-Vote entries can be corrected before confirmation. A confirmed vote cannot be silently undone; verify the public tally before committing it. Starting another game archives the previous game locally; the latest game resumes by default.
+The server listens on `0.0.0.0:3000`. `HOST`, `PORT`, and `DB_PATH` override its listener and database. Allow the port through the laptop firewall and use Wi-Fi without client isolation. `/leader` is available to the trusted local group; it does not require a password. This application is intended for local HTTP play.
 
 ## Development and tests
 
@@ -63,10 +55,6 @@ Tests use Node's built-in test runner and SQLite. Engine tests include all 22 ro
 
 The Chromium test uses the installed Chromium binary, or `CHROMIUM_PATH`, and produces screenshots in `test-results/`. It drives actual pages over a debugging pipe against a real localhost server, including the production SSE transport. It uses isolated browser profiles and an in-process network service to avoid a network-service crash in this laptop's Chromium build; no browser configuration is changed. If Chromium is unavailable or prohibited by an execution sandbox, the test is reported as skipped.
 
-**Historical shared-laptop validation on 2026-10-18:** engine, HTTP, persistence, AI-adapter, UI-controller, and actual Chromium tests run on this laptop. Desktop/projector/mobile screenshots are in `test-results/`. The live smoke check confirmed the configured `gpt-5-mini` connection, a German private rule answer, refusal to disclose hidden roles, a legal structured decision, a complete game over actual HTTP/SSE, and database restart recovery. The reported estimated API cost was US$0.0031. Physical projector output and audible room volume still need a check in the room.
-
-The opt-in live smoke check uses a temporary database and fictional players; it never replaces the saved game. Its report is written to `test-results/live-smoke.json`. Ordinary automated tests disable real API access, even when a key is present in your environment.
-
 ## Structure
 
 - `server/engine.ts`: deterministic game transitions and legal Storyteller decision choices.
@@ -78,7 +66,7 @@ The opt-in live smoke check uses a temporary database and fictional players; it 
 
 The implementation uses native Node HTTP, `node:sqlite`, and browser JavaScript rather than the initially proposed React/Fastify/Vite stack. The execution environment could not access npm and had no cached packages. The application has no runtime npm dependencies; QR codes use `qrencode`. The optional Playwright testing harness adds a development dependency and requires `npm install`. The server and rules engine remain TypeScript, executed through Node's native type stripping; the tests perform runtime verification, not TypeScript static checking.
 
-`HOST`, `PORT`, and `DB_PATH` can override the default local listener and database path. This release is designed for one trusted group using one laptop, player phones on the same Wi-Fi, and one projector window. It does not implement remote play, Travellers, Fabled, custom scripts, or other editions.
+`HOST`, `PORT`, and `DB_PATH` can override the default local listener and database path. This release is designed for one trusted group using a laptop server and phones on the same Wi-Fi. It does not implement remote play, Travellers, Fabled, custom scripts, or other editions.
 
 ## Credits
 
@@ -86,23 +74,7 @@ Blood on the Clocktower and Trouble Brewing are by Steven Medway / The Pandemoni
 
 ### Geführte Lernrunde
 
-Über **„Geführte Lernrunde“** oben am Laptop startet ihr eine offene, angeleitete
-Übung für 7–10 Personen (etwa 15–20 Minuten). Meldet euch vorher auf euren Handys mit Namen und Sitzplatz an. Ein laufendes Spiel wird pausiert und bleibt gespeichert.
-Die Lernrunde erscheint auch auf den Handys, läuft separat, nutzt keine KI und verursacht keine API-Kosten.
-
-Die Assistenz liest die Schritte vor und klickt nach dem Ausprobieren weiter.
-Der Beamer zeigt die Aufgaben, offene Rollen, Aufrufe und einen 60-Sekunden-Timer.
-Ihr übt Gift, Nachtinformationen, Bluffen, Nominierung, Hände zählen, Hinrichtung
-und die letzte Stimme toter Personen. Richtige Antworten beziehungsweise alle
-Übungsstimmen schalten den nächsten Schritt frei. Alle 22 Charaktere haben
-aufklappbare Karten mit Regeln und Beispielen. Fortschritt und Antworten bleiben
-bei einem Neustart erhalten. „Zurück“ wiederholt einen Schritt und setzt dessen
-Übung zurück. „Lernrunde beenden“ kehrt zum gespeicherten Spiel zurück; dieses
-bleibt pausiert, bis ihr es fortsetzt.
-
-Die Lernrunde ist ein festes Unterrichtsszenario: Sie erklärt die gemeinsamen Handy-Nachtschritte und
-führt zu einem gemeinsamen Sieg von Gut. Für die erste echte Runde beginnt ihr
-anschließend ein neues Spiel mit geheimen, neu verteilten Rollen.
+Start the optional open-role tutorial from `/leader`. It runs separately from the saved game and uses no AI. Registered players take part from their phones; the leader reads the steps and advances the exercise. The tutorial retains its own timed practice step.
 
 ## Rules Q&A and manual wiki
 
@@ -119,24 +91,6 @@ transitions. Game master decisions receive structured secret context and a bound
 set of legal options; public narration receives only public context. Services are
 injected; failures stop the action without replacing the AI. Existing saved games remain compatible.
 See [engine and game master architecture](docs/ENGINE.md) for the contracts.
-
-### Background music
-
-Run `npm run audio:download` once with internet access to download four unmodified ten-minute Tabletop Audio MP3s into `assets/audio/` (roughly 60 MB). The command skips existing valid files and can be rerun after a failed download. Playback then works locally without internet. Track credits and licence links are available from the Beamer's **Musiknachweis** link: Tabletop Audio, CC BY-NC-ND 4.0, for noncommercial use.
-
-Open the Beamer tab on the computer connected to your speakers and click **Ton aktivieren** once. Only this tab plays audio; the private laptop screen stays silent. Village ambience accompanies setup, dawn, and day discussion, *Dark and Stormy* accompanies both shared night steps, *In the Shadows* accompanies nominations, and *Solemn Vow* accompanies the ending. Tracks loop and crossfade. Public pauses stop music; resuming continues it. The volume slider controls music and existing notification cues, and **Musik stummschalten** silences background music independently. Music never follows private interactions, roles, targets, or hidden outcomes. Use one Beamer tab for sound to avoid duplicate playback. Missing files produce a visible message while the rest of the game continues.
-
-## LLM browser playtesting
-
-Use `npm run --silent playtest` to let one LLM operate all players through
-Playwright on the real laptop, projector, and isolated phone UIs. Real Storyteller AI calls remain
-enabled with your configured settings; runs use a separate temporary game database.
-The JSON-line browser interface provides visible controls, text, screenshots and
-errors, and saves a Playwright trace. See [the playtesting guide](docs/PLAYTEST.md)
-for the agent prompt, commands, coverage checklist, and setup.
-
-`npm run test:harness` runs a complete scripted browser rehearsal with isolated phones
-and real AI calls. Add `-- --demo` for the faster open-role rehearsal.
 
 ## Readable rules wiki
 

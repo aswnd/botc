@@ -12,12 +12,19 @@ test('Chromium: seven isolated phones join, reload, play nights and use private 
   await new Promise<void>(ok=>app.server.listen(0,'127.0.0.1',ok));const addr=app.server.address() as any,base=`http://127.0.0.1:${addr.port}`;
   browser=await chromium.launch({headless:true,executablePath,args:['--enable-features=NetworkServiceInProcess2,AudioServiceInProcess']});
   const laptop=await browser.newPage(),projector=await browser.newPage({viewport:{width:1920,height:1080}}),phones=[];const errors:string[]=[];
-  await laptop.goto(base);await laptop.locator('#assistant').waitFor();await projector.goto(base+'/projector');
+  await laptop.goto(base+'/leader');await laptop.locator('#assistant').waitFor();await projector.goto(base+'/play');
   for(let i=0;i<7;i++){
    const context=await browser.newContext({viewport:{width:390,height:844}});const p=await context.newPage();p.on('pageerror',e=>errors.push(e.message));await p.goto(base+'/join');
    await p.locator('#name').fill(`Phone ${i+1}`);await p.locator('#seat').selectOption(String(i+1));await p.locator('[data-action="register"]').click();await p.getByText(`Hallo Phone ${i+1}`).waitFor();phones.push(p);
    assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   }
+  await phones[0].bringToFront();
+  if(await phones[0].locator('[data-action="reveal"]').count())await phones[0].locator('[data-action="reveal"]').click();
+  const portrait=await phones[0].evaluate(()=>{const canvas=document.createElement('canvas');canvas.width=canvas.height=64;return canvas.toDataURL('image/jpeg').split(',')[1];});
+  await phones[0].locator('#player-photo').setInputFiles({name:'portrait.jpg',mimeType:'image/jpeg',buffer:Buffer.from(portrait,'base64')});
+  await phones[0].locator('.photo-upload img').waitFor();
+  await laptop.locator('.lobby-members img').waitFor();
+  assert.equal(await phones[0].evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   await laptop.bringToFront();await laptop.locator('#assistant option').filter({hasText:'Phone 1'}).waitFor({state:'attached'});await laptop.locator('#assistant').selectOption({label:'Phone 1'});await laptop.locator('[data-action="create"]').click();await laptop.locator('[data-action="ack"]').click();
   async function reveal(p:any){await p.bringToFront();if(await p.locator('[data-action="reveal"]').count())await p.locator('[data-action="reveal"]').click();await p.locator('.character-card').waitFor({state:'attached'});await p.locator('.working').waitFor({state:'hidden'});}
   async function submit(p:any){
@@ -44,7 +51,7 @@ test('Chromium: seven isolated phones join, reload, play nights and use private 
   await reveal(phones[0]);await phones[0].locator('.night-progress').filter({hasText:'DIE NACHT LÄUFT'}).waitFor();await phones[0].reload();await phones[0].locator('.night-progress').waitFor();await phones[0].locator('[data-action="hide"]').click();assert.equal(await phones[0].locator('.character-card').count(),0);await phones[0].locator('.night-progress').filter({hasText:'Öffne deinen privaten Bildschirm'}).waitFor();
   for(const p of [...phones].reverse())await submit(p);
   assert.equal(app.getGame()!.phase,'night_results');
-  await projector.waitForFunction(()=>document.body.innerText.includes('Die Nacht läuft.'));
+  assert.equal(await laptop.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   assert.doesNotMatch(await projector.locator('body').innerText(),/Phone \d,.*Laptop|DER NÄCHSTE BESUCH|Runde A|Runde B/);
   await reveal(phones[0]);await phones[0].locator('.night-progress').filter({hasText:'DIE NACHT LÄUFT'}).waitFor();await mkdir('test-results',{recursive:true});await phones[0].screenshot({path:'test-results/phone-results.png',fullPage:true});await laptop.screenshot({path:'test-results/phone-host.png',fullPage:true});await projector.screenshot({path:'test-results/phone-projector.png',fullPage:true});
   // Reload uses the identifier saved by registration without manual login.

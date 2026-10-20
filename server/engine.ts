@@ -86,7 +86,7 @@ export function privateView(g:Game,id:string):PlayerPrivateView {
     const {grimoire,...information}=i;
     return information;
   });
-  return {id:p.id,name:p.name,character:ROLE[p.apparent],team:p.team,info:structuredClone(info),opening,action:privateAction(g,p),targets:g.players.map(x=>({id:x.id,name:x.name,seat:x.seat,alive:!g.publicDead.includes(x.id),ghostVote:x.ghostVote})),phase:g.phase,night:g.night,history:[],minimumVisitMs:g.minimumVisitMs};
+  return {id:p.id,name:p.name,character:ROLE[p.apparent],team:p.team,info:structuredClone(info),opening,action:privateAction(g,p),targets:g.players.map(x=>({id:x.id,name:x.name,photo:x.photo,seat:x.seat,alive:!g.publicDead.includes(x.id),ghostVote:x.ghostVote})),phase:g.phase,night:g.night,history:[],minimumVisitMs:g.minimumVisitMs};
 }
 export function grimoire(g:Game):GrimoireEntry[] {return g.players.map(p=>({id:p.id,name:p.name,seat:p.seat,character:p.role,team:p.team,alive:p.alive,markers:[...(p.role==='drunk'?[`Hält sich für ${ROLE[p.apparent].name}`]:[]),...(poisoned(g,p)?['Vergiftet']:[]),...(g.protection?.target===p.id&&active(g,player(g,g.protection.source))?['Geschützt']:[]),...(!g.truthfulInformation&&g.redHerring===p.id?['Falsche Fährte']:[]),...(p.master?[`Butler folgt ${player(g,p.master).name}`]:[]),...(g.infoMarkers?.[p.id]??[])]}));}
 export function executionStanding(g:Game) {
@@ -94,7 +94,7 @@ export function executionStanding(g:Game) {
   return {threshold,executionCandidate:leaders.length===1?leaders[0].nominee:null,tied:leaders.length>1};
 }
 export function publicView(g:Game):PublicGameView {
-  const pub=(p:Player)=>({id:p.id,name:p.name,seat:p.seat,alive:!g.publicDead.includes(p.id),ghostVote:p.ghostVote});
+  const pub=(p:Player)=>({id:p.id,name:p.name,photo:p.photo,seat:p.seat,alive:!g.publicDead.includes(p.id),ghostVote:p.ghostVote});
   const n=nextVisitor(g);
   return {truthfulInformation:!!g.truthfulInformation,phone:g.phone,fastNight:g.fastNight,id:g.id,version:g.version,demo:g.demo,phase:g.phase,day:g.day,night:g.night,players:g.players.map(pub),assistantId:g.assistantId,nextPlayer:n?pub(n):null,readyCount:['distribution','night_choices','night_results'].includes(g.phase)?g.phone?g.players.filter(p=>g.phase==='night_choices'?Object.hasOwn(g.choices,p.id):(g.ready??[]).includes(p.id)).length:g.queueIndex:0,announcement:g.announcement?{...g.announcement}:undefined,cue:{...g.cue},timer:{...g.timer},paused:g.paused,nomination:g.nomination?{...g.nomination}:undefined,ballots:structuredClone(g.ballots),voteDraft:[...g.voteDraft],nominators:[...g.nominators],nominated:[...g.nominated],...executionStanding({...g,players:g.players.map(p=>({...p,alive:!g.publicDead.includes(p.id)}))}),events:structuredClone(g.events),winner:g.winner,endReason:g.endReason,...(g.phase==='ended'||g.demo?{reveal:grimoire(g)}:{}),...(g.phase==='ended'?{debrief:structuredClone(g.story)}:{}),minimumVisitMs:g.minimumVisitMs};
 }
@@ -256,7 +256,7 @@ async function reduceCommand(original:Game,command:Command,d:Decider,now:number)
     requireThat(!g.paused,'Das Spiel ist pausiert.');
     if(type==='ack') {
       requireThat(g.announcement,'Es gibt keinen neuen Vorlesetext.');g.announcement=undefined;
-      if(g.phase==='dawn'){transition(g,'discussion');g.timer={remainingMs:420000,deadline:now+420000};cue(g,'attention');}
+      if(g.phase==='dawn'){transition(g,'discussion');g.timer=g.phone?{remainingMs:0,deadline:null}:{remainingMs:420000,deadline:now+420000};cue(g,'attention');}
       else if(g.phase==='night_choices')cue(g,'night');else if(nextVisitor(g))cue(g,'player');
     }else if(type==='phone_submit') {
       requireThat(g.phone&&!g.announcement,'Bitte zuerst den öffentlichen Vorlesetext bestätigen.');
@@ -302,6 +302,7 @@ async function reduceCommand(original:Game,command:Command,d:Decider,now:number)
     }else if(type==='replay')cue(g,g.cue.kind);
     else if(type==='attention')cue(g,'attention');
     else if(type==='timer') {
+      requireThat(!g.phone,'Diese Runde hat keinen Tagestimer.');
       requireThat(g.phase==='discussion','Der Diskussionstimer ist nur während der Diskussion verfügbar.');
       const left=g.timer.deadline===null?g.timer.remainingMs:Math.max(0,g.timer.deadline-now);
       if(command.action==='toggle')g.timer=g.timer.deadline===null?{remainingMs:left,deadline:left>0?now+left:null}:{remainingMs:left,deadline:null};

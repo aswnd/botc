@@ -3,7 +3,7 @@ export type Phase = 'distribution' | 'night_choices' | 'night_results' | 'dawn' 
 export type CueKind = 'night' | 'player' | 'assistant' | 'attention' | 'timer';
 export type Information = { night: number; text: string; grimoire?: GrimoireEntry[]; requiresConfirmation?:boolean };
 export type GrimoireEntry = { id:string; name:string; seat:number; character:Role; team:Team; alive:boolean; markers:string[] };
-export type Player = { id:string; name:string; seat:number; role:Role; apparent:Role; team:Team; alive:boolean; ghostVote:boolean; usedSlayer:boolean; usedVirgin:boolean; info:Information[]; notifiedRole:Role; master?:string };
+export type Player = { id:string; name:string; photo?:string; seat:number; role:Role; apparent:Role; team:Team; alive:boolean; ghostVote:boolean; usedSlayer:boolean; usedVirgin:boolean; info:Information[]; notifiedRole:Role; master?:string };
 export type DecisionRecord = { key:string; kind:string; choice:string; reason:string; plan?:string;notes?:string };
 export type DecisionRequest = { key:string; kind:string; prompt:string; options:{id:string;label:string}[]; fallback:string; context?:unknown };
 export type Decider = (request:DecisionRequest) => Promise<{choice:string;reason:string;plan?:string;notes?:string}>;
@@ -23,7 +23,7 @@ export type Game = {
   infoMarkers:Record<string,string[]>;
   story:{day:number;night:number;text:string}[];resumeTimer?:boolean;
 };
-export type PublicPlayer = { id:string;name:string;seat:number;alive:boolean;ghostVote:boolean };
+export type PublicPlayer = { id:string;name:string;photo?:string;seat:number;alive:boolean;ghostVote:boolean };
 export type PublicGameView = {
   truthfulInformation?:boolean;
   fastNight?:boolean; phone?:boolean; id:string; version:number; demo:boolean; phase:Phase; night:number;day:number;players:PublicPlayer[];assistantId:string;

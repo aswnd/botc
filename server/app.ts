@@ -40,13 +40,18 @@ export function createApp({dbPath=resolve('data/game.sqlite'),root=resolve('.'),
     res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
     try {
       const url=new URL(req.url??'/',`http://${req.headers.host??'localhost'}`);const path=url.pathname;
-      if(req.method==='GET'&&path==='/'&&!['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket?.remoteAddress??'')){res.writeHead(302,{Location:'/join'});res.end();return;}
+      if(req.method==='GET'&&['/','/projector'].includes(path)&&!legacyApi){res.writeHead(302,{Location:'/join'});res.end();return;}
       if(req.method==='GET'&&path==='/favicon.ico'){res.writeHead(302,{Location:'/src/favicon.svg'});res.end();return;}
       // No cross-origin mutations: this is a local application, not a public API.
       if(req.method==='POST'){
         const origin=req.headers.origin;if(origin)requireThat(new URL(origin).host===req.headers.host,'Fremde Webseiten dürfen das Spiel nicht steuern.');
         requireThat((req.headers['content-type']??'').startsWith('application/json'),'JSON-Anfrage erforderlich.');
       }
+      if(req.method==='GET'&&path.startsWith('/api/avatar/')){
+        const data=phones.photo(path.slice('/api/avatar/'.length));requireThat(data,'Foto nicht gefunden.');
+        res.writeHead(200,{'Content-Type':'image/jpeg','Cache-Control':'public, max-age=31536000, immutable'});res.end(Buffer.from(data.split(',')[1],'base64'));return;
+      }
+      if(req.method==='GET'&&path==='/api/leader')return json(res,200,phones.leader());
       if(req.method==='GET'&&path==='/api/host')return json(res,200,phones.bootstrap(req));
       if(req.method==='GET'&&path==='/api/connect') {const address=server.address();return json(res,200,{urls:phones.urls(address&&typeof address!=='string'?address.port:3000)});}
       if(req.method==='GET'&&path==='/api/join-qr') {
@@ -69,9 +74,9 @@ export function createApp({dbPath=resolve('data/game.sqlite'),root=resolve('.'),
       if(req.method==='POST') {
         const input=await body(req);
         return await serialized(async()=>{
-          const playerRoute=['/api/lobby/register','/api/player/submit','/api/player/chat','/api/player/tutorial'].includes(path);
+          const playerRoute=['/api/lobby/register','/api/player/submit','/api/player/day-action','/api/player/photo','/api/player/chat','/api/player/tutorial'].includes(path);
           if(!playerRoute)phones.host(req);
-          if(tutorial&&['/api/lobby/start','/api/player/submit','/api/player/chat','/api/night/retry'].includes(path))throw new GameError('Bitte zuerst die Lernrunde beenden.');
+          if(tutorial&&['/api/lobby/start','/api/player/submit','/api/player/day-action','/api/player/photo','/api/player/chat','/api/night/retry'].includes(path))throw new GameError('Bitte zuerst die Lernrunde beenden.');
           if(path==='/api/player/tutorial'){
             const m=phones.member(req);requireThat(tutorial&&input.action==='answer','Jetzt ist keine Übung verfügbar.');
             const step=tutorialSteps(tutorial.names)[tutorial.step];
@@ -171,7 +176,7 @@ export function createApp({dbPath=resolve('data/game.sqlite'),root=resolve('.'),
         });
       }
       if(req.method!=='GET')return json(res,405,{error:'Methode nicht verfügbar.'});
-      const file=['/','/projector','/join','/play'].includes(path)?'index.html':['/wiki','/wiki/'].includes(path)?'wiki/index.html':decodeURIComponent(path.slice(1));
+      const file=['/','/leader','/projector','/join','/play'].includes(path)?'index.html':['/wiki','/wiki/'].includes(path)?'wiki/index.html':decodeURIComponent(path.slice(1));
       const officialPdf=file.startsWith('official_pdfs/')&&manualPdfNames.has(file.slice('official_pdfs/'.length));
       requireThat(file==='index.html'||officialPdf||(/^wiki\/(index\.html|app\.js|content\.js|style\.css)$/.test(file)||/^src\/[a-zA-Z0-9/_-]+\.(js|css|svg)$/.test(file)||/^assets\/audio\/[a-zA-Z0-9_-]+\.(mp3|html)$/.test(file)),'Datei nicht verfügbar.');
       const full=resolve(root,file);requireThat(full.startsWith(root+'/'),'Datei nicht verfügbar.');

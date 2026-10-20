@@ -5,28 +5,29 @@ import { applyCommand, makeGame, privateView, publicView, requireThat } from './
 import type { Game, GameMasterServices } from '../shared/types.ts';
 import type { Store } from './store.ts';
 
-type Member={id:string;name:string;seat:number;tokenHash:string;playerId?:string};
+type Member={id:string;name:string;seat:number;tokenHash:string;playerId?:string;photo?:string};
 type Lobby={id:string;members:Member[];gameId?:string;assistantId?:string};
 const hash=(s:string)=>createHash('sha256').update(s).digest('hex');
 const secret=()=>randomBytes(24).toString('base64url');
 export function createPhones(store:Store,getGame:()=>Game|null,setGame:(g:Game)=>void,services:(g:Game)=>GameMasterServices,broadcast:()=>void) {
-  store.db.exec(`CREATE TABLE IF NOT EXISTS phone_lobby(id INTEGER PRIMARY KEY CHECK(id=1), state TEXT NOT NULL);
+  store.db.exec(`CREATE TABLE IF NOT EXISTS player_photos(id TEXT PRIMARY KEY, data TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS phone_lobby(id INTEGER PRIMARY KEY CHECK(id=1), state TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS phone_decisions(game_id TEXT NOT NULL, decision_key TEXT NOT NULL, result TEXT NOT NULL, PRIMARY KEY(game_id,decision_key));
     CREATE TABLE IF NOT EXISTS phone_commands(game_id TEXT NOT NULL, member_id TEXT NOT NULL, command_id TEXT NOT NULL, PRIMARY KEY(game_id,member_id,command_id));`);
   const saved=store.db.prepare('SELECT state FROM phone_lobby WHERE id=1').get() as {state:string}|undefined;
   let lobby:Lobby=saved?JSON.parse(saved.state, (key,value)=>key==='recoveryHash'?undefined:value):{id:randomUUID(),members:[]};
   const hostToken=secret();
   function save(){store.db.prepare('INSERT INTO phone_lobby VALUES(1,?) ON CONFLICT(id) DO UPDATE SET state=excluded.state').run(JSON.stringify(lobby));}
-  function host(req:IncomingMessage){requireThat(req.headers['x-host-token']===hostToken,'Diese Steuerung ist nur am Laptop verfügbar.');}
-  function bootstrap(req:IncomingMessage){requireThat(['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket?.remoteAddress??''),'Die Assistenz wird am Laptop geöffnet.');return {token:hostToken};}
-  function member(req:IncomingMessage){const token=req.headers['x-player-token'];requireThat(typeof token==='string'&&token.length<=100,'Bitte auf deinem Handy anmelden.');const m=lobby.members.find(m=>m.tokenHash===hash(token));requireThat(m,'Anmeldung abgelaufen. Bitte die Assistenz am Laptop um Hilfe bitten.');return m;}
+  function host(req:IncomingMessage){requireThat(req.headers['x-host-token']===hostToken,'Diese Steuerung ist nur auf dem Leiter-Handy verfügbar.');}
+  function bootstrap(req:IncomingMessage){requireThat(['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket?.remoteAddress??''),'Die Assistenz wird auf dem Leiter-Handy geöffnet.');return {token:hostToken};}
+  function member(req:IncomingMessage){const token=req.headers['x-player-token'];requireThat(typeof token==='string'&&token.length<=100,'Bitte auf deinem Handy anmelden.');const m=lobby.members.find(m=>m.tokenHash===hash(token));requireThat(m,'Anmeldung abgelaufen. Bitte die Assistenz auf dem Leiter-Handy um Hilfe bitten.');return m;}
   function current(){const g=getGame();return g?.phone&&g.id===lobby.gameId?g:null;}
   function view(req:IncomingMessage){const m=member(req),g=current();const identity={id:m.id,name:m.name,seat:m.seat,lobbyId:lobby.id};
     if(!g||!m.playerId)return {identity,view:null};
     const v=privateView(g,m.playerId),submitted=g.phase==='night_choices'?Object.hasOwn(g.choices,m.playerId):(g.ready??[]).includes(m.playerId);
     return {identity,view:{...v,history:store.history(g.id,m.playerId),submitted,action:submitted||g.paused||g.announcement?null:v.action,blocked:!!g.announcement||g.paused,gameId:g.id}};
   }
-  function publicLobby(){return {id:lobby.id,started:!!lobby.gameId,members:lobby.members.map(({id,name,seat})=>({id,name,seat})),assistantId:lobby.assistantId,legacyArchived:!!getGame()&&!getGame()?.phone};}
+  function publicLobby(){return {id:lobby.id,started:!!lobby.gameId,members:lobby.members.map(({id,name,seat,photo})=>({id,name,seat,photo})),assistantId:lobby.assistantId,legacyArchived:!!getGame()&&!getGame()?.phone};}
   function urls(port:number){return Object.entries(networkInterfaces()).sort(([a],[b])=>Number(/^(wl|en|eth)/.test(b))-Number(/^(wl|en|eth)/.test(a))).flatMap(([,xs])=>(xs??[]).filter(x=>x.family==='IPv4'&&!x.internal).map(x=>`http://${x.address}:${port}/join`));}
   function durableServices(g:Game):GameMasterServices {const ports=g.fastNight&&['distribution','night_choices','night_results'].includes(g.phase)?{decide:async (r:Parameters<GameMasterServices['decide']>[0])=>({choice:r.fallback,reason:'Schnelle Nacht: regelkonforme lokale Auswahl.'})}:services(g);return {...ports,decide:async r=>{
     const old=store.db.prepare('SELECT result FROM phone_decisions WHERE game_id=? AND decision_key=?').get(g.id,r.key) as {result:string}|undefined;
@@ -47,7 +48,7 @@ export function createPhones(store:Store,getGame:()=>Game|null,setGame:(g:Game)=
   async function post(path:string,input:any,req:IncomingMessage):Promise<unknown|undefined> {
     if(path==='/api/lobby/reset'){host(req);requireThat(!current()||current()!.phase==='ended'||input.archive===true,'Bitte das Archivieren der laufenden Runde bestätigen.');lobby={id:randomUUID(),members:[]};resolutionError=false;save();broadcast();return publicLobby();}
     if(path==='/api/lobby/register'){
-      requireThat(!lobby.gameId,'Das Spiel hat bereits begonnen. Bitte die Assistenz am Laptop um Hilfe bitten.');
+      requireThat(!lobby.gameId,'Das Spiel hat bereits begonnen. Bitte die Assistenz auf dem Leiter-Handy um Hilfe bitten.');
       requireThat(input.lobbyId===lobby.id,'Die Anmeldung gehört zu einer früheren Runde.');
       let m:Member|undefined;if(req.headers['x-player-token'])m=member(req);
       requireThat(typeof input.name==='string'&&input.name.trim().length>0&&input.name.trim().length<=32,'Bitte einen Namen mit 1–32 Zeichen eintragen.');
@@ -67,7 +68,7 @@ export function createPhones(store:Store,getGame:()=>Game|null,setGame:(g:Game)=
       const members=[...lobby.members].sort((a,b)=>a.seat-b.seat);requireThat(members.length>=7&&members.length<=10&&members.every((m,i)=>m.seat===i+1),'Benötigt werden 7–10 Personen auf lückenlosen Plätzen ab 1.');
       const assistant=members.findIndex(m=>m.id===lobby.assistantId);requireThat(assistant>=0,'Bitte eine Assistenz wählen.');
       const g=makeGame({truthfulInformation:input.truthfulInformation??!input.demo,names:members.map(m=>m.name),assistant,demo:input.demo,phone:true,fastNight:input.fastNight??true,minimumVisitMs:0});
-      lobby.gameId=g.id;members.forEach((m,i)=>m.playerId=g.players[i].id);
+      lobby.gameId=g.id;members.forEach((m,i)=>{m.playerId=g.players[i].id;g.players[i].photo=m.photo;});
       store.db.exec('BEGIN IMMEDIATE');try{store.db.prepare('INSERT INTO games VALUES(?,?,?)').run(g.id,JSON.stringify(g),Date.now());save();store.db.exec('COMMIT');}catch(e){store.db.exec('ROLLBACK');const old=store.db.prepare('SELECT state FROM phone_lobby WHERE id=1').get() as {state:string}|undefined;lobby=old?JSON.parse(old.state):{id:randomUUID(),members:[]};throw e;}
       setGame(g);resolutionError=false;broadcast();return {ok:true};
     }
@@ -88,6 +89,23 @@ export function createPhones(store:Store,getGame:()=>Game|null,setGame:(g:Game)=
       // The HTTP layer schedules resolution after returning this durable acknowledgement.
       return view(req);
     }
+    if(path==='/api/player/photo'){
+      const m=member(req);
+      requireThat(typeof input.photo==='string'&&input.photo.length<=60000&&/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(input.photo),'Bitte ein gültiges Foto hochladen.');
+      const bytes=Buffer.from(input.photo.split(',')[1],'base64');
+      requireThat(bytes.length>3&&bytes[0]===255&&bytes[1]===216&&bytes[2]===255,'Bitte ein gültiges JPEG-Foto hochladen.');
+      const revision=randomUUID();store.db.prepare('INSERT INTO player_photos VALUES(?,?)').run(revision,input.photo);
+      m.photo='/api/avatar/'+revision;
+      const g=current();if(g&&m.playerId){const next=structuredClone(g);next.players.find(p=>p.id===m.playerId)!.photo=m.photo;store.save(next);setGame(next);}
+      save();broadcast();return view(req);
+    }
+    if(path==='/api/player/day-action'){
+      const m=member(req),g=current();requireThat(g&&m.playerId,'Bitte auf den Spielstart warten.');
+      requireThat(input.gameId===g.id&&input.version===g.version,'Der Spielstand hat sich geändert. Bitte erneut versuchen.');
+      requireThat(input.action==='slayer','Unbekannte Tagesaktion.');
+      const next=await applyCommand(g,{type:'slayer',playerId:m.playerId,target:input.target},durableServices(g));
+      store.save(next);setGame(next);broadcast();return view(req);
+    }
     if(path==='/api/player/chat'){
       const m=member(req),g=current();requireThat(g&&m.playerId,'Bitte auf den Spielstart warten.');
       requireThat(typeof input.question==='string'&&input.question.trim().length>0&&input.question.length<=1200,'Bitte eine Frage mit höchstens 1200 Zeichen stellen.');
@@ -102,5 +120,5 @@ export function createPhones(store:Store,getGame:()=>Game|null,setGame:(g:Game)=
     return undefined;
   }
   function viewForMember(m:Member){return {identity:{id:m.id,name:m.name,seat:m.seat,lobbyId:lobby.id}};}
-  return {host,bootstrap,member,view,post,publicLobby,urls,current,durableServices,resolve,get resolving(){return resolving;},get resolutionError(){return resolutionError;}};
+  return {host,bootstrap,leader:()=>({token:hostToken}),photo:(id:string)=>(store.db.prepare('SELECT data FROM player_photos WHERE id=?').get(id) as {data:string}|undefined)?.data,member,view,post,publicLobby,urls,current,durableServices,resolve,get resolving(){return resolving;},get resolutionError(){return resolutionError;}};
 }
