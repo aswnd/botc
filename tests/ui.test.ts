@@ -1,3 +1,4 @@
+import {nightProgress} from '../src/night-progress.js';
 import {createMusicPlayer} from '../src/music.js';
 import {tutorialSteps} from '../src/tutorial.js';
 import {tutorialScreen} from '../src/tutorial-ui.js';
@@ -12,7 +13,7 @@ async function interfaceHarness(path='/') {
   const app=createApp({dbPath:':memory:'});const listeners:Record<string,Function>={};
   const root={innerHTML:'',addEventListener:(name:string,fn:Function)=>listeners[name]=fn};
   const document={querySelector:(selector:string)=>selector==='#root'?root:null,querySelectorAll:()=>[],getElementById:()=>null,addEventListener:()=>{},activeElement:null};
-  const c=vm.createContext({createMusicPlayer,tutorialSteps,tutorialScreen,document,location:{pathname:path},Date,console,crypto,EventSource:class {onmessage:any;onerror:any;},setInterval:()=>0,localStorage:{getItem:()=>null,setItem:()=>{}},window:{confirm:()=>true},enableAudio:async()=>{},isAudioEnabled:()=>false,setVolume:()=>{},getVolume:()=>.4,playCue:()=>{},fetch:async(url:string,init:any={})=>{
+  const c=vm.createContext({nightProgress,createMusicPlayer,tutorialSteps,tutorialScreen,document,location:{pathname:path},Date,console,crypto,EventSource:class {onmessage:any;onerror:any;},setInterval:()=>0,localStorage:{getItem:()=>null,setItem:()=>{}},window:{confirm:()=>true},enableAudio:async()=>{},isAudioEnabled:()=>false,setVolume:()=>{},getVolume:()=>.4,playCue:()=>{},fetch:async(url:string,init:any={})=>{
     const r=await request(app,url,{method:init.method??'GET',data:init.body?JSON.parse(init.body):undefined,headers:Object.fromEntries(Object.entries(init.headers??{}).map(([k,v])=>[k.toLowerCase(),String(v)]))});return {ok:r.status<400,json:async()=>r.json()};
   }});
   const script=(await readFile('src/app.js','utf8')).replace(/^import .*?;\n/gm,'')+`\nglobalThis.harness={get busy(){return busy},get error(){return error},get state(){return envelope},get privateData(){return privateData},get token(){return privateToken},get targets(){return privateTargets},get html(){return root.innerHTML},setDemo(){demo=true},setView(v){view=v;render()},accept,render,hide};`;
@@ -44,7 +45,7 @@ test('actual UI templates and actions run a complete first-night handover flow',
     ui.change('nominator','p1');ui.change('nominee','p8');await ui.click('nominate');await ui.click('ack');assert.match(ui.h.html,/voter-list/);
     const vote=await request(ui.app,'/api/command',{method:'POST',data:{version:ui.app.getGame()!.version,commandId:crypto.randomUUID(),command:{type:'vote_draft',voters:['p1','p2','p3','p4']}}});ui.h.accept(vote.json());
     await ui.click('vote-confirm');await ui.click('ack');assert.match(ui.h.html,/Noah steht zur Hinrichtung/);
-    await ui.click('confirm-close');await ui.click('close-day');assert.equal(ui.app.getGame()!.phase,'night_choices');assert.equal(ui.app.getGame()!.players[6].role,'imp');
+    await ui.click('confirm-close');await ui.click('close-day');assert.equal(ui.app.getGame()!.phase,'night_choices');assert.equal(ui.app.getGame()!.players.filter(p=>p.role==='imp').length,1);
     assert.match(ui.h.html,/Noah wurde hingerichtet/);
     await ui.click('ack');await ui.click('home');
     for(let round=0;round<2;round++)for(let i=1;i<=8;i++){
@@ -52,7 +53,7 @@ test('actual UI templates and actions run a complete first-night handover flow',
       if(p.action)for(const t of p.targets.filter((t:any)=>!p.action.excludeSelf||t.id!==p.id).slice(0,p.action.count))await ui.click('target',{target:t.id});
       await ui.click('finish');if(ui.h.privateData)await ui.click('finish');
     }
-    await ui.click('assistant');await ui.click('ack');await ui.click('nominations');await ui.click('ack');ui.change('nominator','p2');ui.change('nominee','p7');await ui.click('nominate');await ui.click('ack');
+    await ui.click('assistant');await ui.click('ack');await ui.click('nominations');await ui.click('ack');ui.change('nominator','p2');ui.change('nominee',ui.app.getGame()!.players.find(p=>p.role==='imp')!.id);await ui.click('nominate');await ui.click('ack');
     const finalVote=await request(ui.app,'/api/command',{method:'POST',data:{version:ui.app.getGame()!.version,commandId:crypto.randomUUID(),command:{type:'vote_draft',voters:['p2','p3','p4']}}});ui.h.accept(finalVote.json());
     await ui.click('vote-confirm');await ui.click('ack');await ui.click('close-day');await ui.click('home');
     assert.equal(ui.app.getGame()!.winner,'good');assert.match(ui.h.html,/Die Dorfbewohner gewinnen/);assert.match(ui.h.html,/reveal-card/);assert.match(ui.h.html,/Was in den Nächten geschah/);
@@ -74,4 +75,30 @@ test('projector templates receive only the public invitation and timer',async()=
     await request(ui.app,'/api/new',{method:'POST',data:{names:['A','B','C','D','E','F','G','H'],assistant:1,demo:false,budget:5}});
     ui.h.accept((await request(ui.app,'/api/state')).json());assert.match(ui.h.html,/B,<br\/><em>bitte zum Laptop/);assert.ok(!ui.h.html.includes('character-card'));assert.ok(!ui.h.html.includes('reveal-card'));assert.match(ui.h.html,/Lautstärke/);
   }finally{await ui.close();}
+});
+
+test('setup information selector starts both truthful and standard games',async()=>{
+  const ui=await interfaceHarness();try{
+    assert.match(ui.h.html,/id="truthful-information"/);
+    assert.match(ui.h.html,/value="true" selected/);
+    await ui.click('create');
+    assert.equal(ui.app.getGame()!.truthfulInformation,true);
+    ui.h.setView('setup');ui.change('truthful-information','false');
+    assert.match(ui.h.html,/value="false" selected/);
+    await ui.click('create');
+    assert.equal(ui.app.getGame()!.truthfulInformation,false);
+    assert.match(ui.app.getGame()!.announcement!.text,/Standardregeln/);
+  }finally{await ui.close();}
+});
+
+test('readiness indicator shows current confirmations on host and projector',async()=>{
+  for(const path of ['/','/projector']){
+    const ui=await interfaceHarness(path);try{
+      await request(ui.app,'/api/new',{method:'POST',data:{names:['A','B','C','D','E','F','G'],assistant:0,demo:false,budget:5}});
+      const g=ui.app.getGame()!;g.phase='night_results';g.announcement=undefined;g.queueIndex=3;
+      ui.h.accept((await request(ui.app,'/api/state')).json());
+      assert.match(ui.h.html,/3 von 7 bereit/);assert.match(ui.h.html,/Ergebnisse gelesen/);
+      assert.match(ui.h.html,/<progress value="3" max="7"/);
+    }finally{await ui.close();}
+  }
 });

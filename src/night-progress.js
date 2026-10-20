@@ -1,0 +1,14 @@
+export function nightProgress(g,player=null,{concealed=false,resolving=false}={}){
+  if(!g||!['night_choices','night_results'].includes(g.phase))return '';
+  const results=g.phase==='night_results',blocked=g.paused||!!g.announcement||player?.blocked;
+  const submitted=player?.phase===g.phase&&player.submitted;
+  if(g.phone){
+    const pending=player&&!submitted&&!blocked&&!concealed;
+    const title=blocked?'Bitte warten':resolving?'Die Spielleitung wertet die Nacht aus …':concealed?'Öffne deinen privaten Bildschirm':pending?results?'Neue Information für dich':'Deine Nachtaufgabe':'Bleib im Nachtspiel';
+    const text=blocked?'Die Assistenz gibt die Nacht frei.':concealed?'Öffne den Bildschirm für deine Nachtaufgabe oder das Nachtspiel.':pending?results?'Lies und bestätige die Information. Danach geht dein Nachtspiel weiter.':'Erledige deine Rollenaktion oder das kurze Nachtspiel.': 'Spiel weiter. Falls du neue Informationen erhältst, erscheinen sie automatisch. Die Nacht endet für alle gemeinsam am Morgen.';
+    return `<section class="night-progress ${pending?'needs-action':''}" role="status" aria-label="Nachtablauf"><span class="eyebrow">NACHT ${g.night} · DIE NACHT LÄUFT</span><strong class="night-status">${resolving?'<span class="gm-spinner" aria-hidden="true"></span>':''}${title}</strong><p>${text}</p></section>`;
+  }
+  const title=blocked?'Bitte warten':resolving?'Die Spielleitung wertet die Nacht aus …':concealed?'Öffne deinen privaten Bildschirm':submitted?results?'Für diese Nacht bist du fertig':'Schritt 1 bestätigt – Schritt 2 folgt':player?'Du bist jetzt dran':results?'Alle bestätigen erneut':'Alle bestätigen ihre Bereitschaft';
+  const text=blocked?'Die Assistenz gibt den nächsten Schritt frei.':resolving?'Danach beginnt Schritt 2. Handy offen lassen: Du musst noch einmal bestätigen.':concealed?'Prüfe dort, ob du in diesem Schritt noch bestätigen musst. Auch Tote machen mit.':submitted?results?'Warte auf den Morgen.': 'Handy offen lassen. Sobald Schritt 2 beginnt, musst du erneut bestätigen.':results?'Ergebnisse lesen und bestätigen – auch ohne neue Information und auch als tote Person.':'Entscheidung oder Bereitschaft bestätigen. Danach folgt für alle Schritt 2 – auch für Tote.';
+  return `<section class="night-progress ${player&&!submitted&&!blocked&&!resolving?'needs-action':''}" role="status" aria-label="Nachtablauf"><span class="eyebrow">NACHT ${g.night} · SCHRITT ${results?2:1} VON 2</span><ol class="night-steps"><li class="${results?'complete':'active'}" ${results?'':'aria-current="step"'}><b>${results?'✓':'1'}</b><span>Entscheidung<br/>bestätigen</span></li><li class="${results?'active':''}" ${results?'aria-current="step"':''}><b>2</b><span>Ergebnisse lesen<br/>und bestätigen</span></li></ol><strong class="night-status">${resolving?'<span class="gm-spinner" aria-hidden="true"></span>':''}${title}</strong><p>${text}</p></section>`;
+}

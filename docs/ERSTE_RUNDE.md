@@ -27,7 +27,9 @@ Eure Charaktere bleiben geheim. Gut versucht, den Dämon zu finden; Böse versuc
 
 **Nachts bleiben alle am Platz und öffnen gemeinsam ihr Handy**, auch wer tot ist. Lasst die Spielseite offen. Geschlossene Augen und einzelne Aufrufe sind nicht nötig. Sprecht währenddessen nicht miteinander und schaut nicht auf fremde Bildschirme.
 
-Zuerst bestätigt ihr eure Entscheidung oder Bereitschaft. Sind alle bereit, löst die Spielleitung in Rollenreihenfolge auf. Danach lest und bestätigt ihr gemeinsam die Ergebnisse. Manche sehen eine neutrale Nachricht. Der Rabenhüter wählt vorsorglich ein Ziel; nur bei seinem Nachttod erfährt er dessen Charakter.
+Die Nacht läuft ohne gemeinsame zweite Bestätigungsrunde. Erledigt eure Rollenaktion oder findet sechs Zeichen im Nachtspiel; dann wird eure Bereitschaft automatisch bestätigt. Spielt danach weiter am Handy. Neue Informationen unterbrechen das Nachtspiel und müssen gelesen und bestätigt werden. Ohne neue Information ist keine zweite Bestätigung nötig. Alle bleiben bis zum Morgen im Nachtspiel, auch Tote. Das Spiel verändert keine Rollen oder Fähigkeiten. Der Rabenhüter wählt ab der zweiten Nacht vorsorglich ein Ziel; nur bei seinem Nachttod erfährt er dessen Charakter.
+
+**Schnelle Nächte** sind für neue Runden voreingestellt: Die Anwendung wählt regelkonforme Hinweise lokal, ohne KI-Wartezeit. Für individuelle KI-Nachtentscheidungen könnt ihr die Option vor dem Start deaktivieren oder am Laptop den **Nachtmodus** wechseln. In beiden Modi wartet die Auswertung auf die benötigten Spielerentscheidungen.
 
 Tagsüber könnt ihr auf eurem eigenen Handy private Regelfragen stellen. **Bildschirm verbergen** verdeckt Inhalte, ohne euch abzumelden.
 
@@ -49,7 +51,11 @@ Jedes wichtige Signal hat zusätzlich eine sichtbare Nachricht. Wenn der Ton feh
 - **Kurze Pause:** Die Assistenz pausiert am Laptop.
 - **Browser neu geladen:** Die Anmeldung bleibt erhalten. Bei einem anderen Browser den privaten Wiederherstellungscode eingeben; dadurch wird das vorherige Gerät abgemeldet.
 - **Server beendet:** `npm start` erneut ausführen. Der gespeicherte Spielstand wird geladen.
-- **KI nicht erreichbar:** Alle Entscheidungen bleiben gespeichert. Die Assistenz nutzt **Auflösung erneut versuchen**. Es gibt keine Ersatzspielleitung. Grundregeln und Charakterbeschreibungen bleiben verfügbar.
+- **KI nicht erreichbar:** Alle Entscheidungen bleiben gespeichert. Die Assistenz nutzt **Auflösung erneut versuchen**. Im KI-Nachtmodus gibt es keinen stillen Ersatz. Alternativ kann die Assistenz ausdrücklich auf schnelle Nächte wechseln und erneut auswerten. Grundregeln und Charakterbeschreibungen bleiben verfügbar.
 - **Stimme falsch angeklickt:** Vor der Bestätigung korrigieren und den öffentlichen Gesamtstand gemeinsam prüfen.
 
 Nach dem Spiel werden alle Rollen aufgedeckt. Unter **Was in den Nächten geschah** könnt ihr die nächtlichen Angriffe und Schutzwirkungen gemeinsam nachvollziehen.
+
+## Anfänger-Hausregel: wahre Informationen
+
+Vor dem Start wählt die Assistenz unter „Informationen der Spielleitung“ zwischen „Keine grundlosen Lügen · Anfänger“ (vorausgewählt) und „Fehlinformation nach Spielregeln erlaubt“. Die Auswahl gilt für die gesamte neue Partie, auch für Proberunden. Im Anfängermodus sind falsche Hinweise bei Betrunkenheit, Vergiftung oder einer erlaubten Fehlregistrierung des Einsiedlers möglich. Betrunkener, Einsiedler und Baron können verteilt werden. Fehlregistrierungen des Spions und die falsche Fährte der Wahrsagerin sind deaktiviert. Andere Auswirkungen von Vergiftung bleiben bestehen. Spieler dürfen weiterhin bluffen. Die Startansage erklärt die Hausregel, die abweichenden Standardtexten vorgeht. Im Standardmodus gelten alle üblichen Fähigkeiten einschließlich erlaubter Fehlinformation.

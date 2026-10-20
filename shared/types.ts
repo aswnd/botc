@@ -1,7 +1,7 @@
 import type { Role, Team, Character } from './characters.ts';
 export type Phase = 'distribution' | 'night_choices' | 'night_results' | 'dawn' | 'discussion' | 'nominations' | 'ended';
 export type CueKind = 'night' | 'player' | 'assistant' | 'attention' | 'timer';
-export type Information = { night: number; text: string; grimoire?: GrimoireEntry[] };
+export type Information = { night: number; text: string; grimoire?: GrimoireEntry[]; requiresConfirmation?:boolean };
 export type GrimoireEntry = { id:string; name:string; seat:number; character:Role; team:Team; alive:boolean; markers:string[] };
 export type Player = { id:string; name:string; seat:number; role:Role; apparent:Role; team:Team; alive:boolean; ghostVote:boolean; usedSlayer:boolean; usedVirgin:boolean; info:Information[]; notifiedRole:Role; master?:string };
 export type DecisionRecord = { key:string; kind:string; choice:string; reason:string; plan?:string;notes?:string };
@@ -9,7 +9,8 @@ export type DecisionRequest = { key:string; kind:string; prompt:string; options:
 export type Decider = (request:DecisionRequest) => Promise<{choice:string;reason:string;plan?:string;notes?:string}>;
 export type Command = { type:string; [key:string]:unknown };
 export type Game = {
-  phone?:boolean; ready?:string[]; id:string; version:number; seed:number; demo:boolean; createdAt:number; phase:Phase; night:number; day:number;
+  truthfulInformation?:boolean;
+  fastNight?:boolean; nightReadCounts?:Record<string,number>; phone?:boolean; ready?:string[]; id:string; version:number; seed:number; demo:boolean; createdAt:number; phase:Phase; night:number; day:number;
   players:Player[]; assistantId:string; queueIndex:number; choices:Record<string,string[]>; resultDone:string[];
   redHerring:string; bluffs:Role[]; poison?:{source:string;target:string}; protection?:{source:string;target:string};
   nightDeaths:string[]; publicDead:string[]; ravenPending:string[]; ravenPoisoned:Record<string,boolean>;
@@ -24,8 +25,9 @@ export type Game = {
 };
 export type PublicPlayer = { id:string;name:string;seat:number;alive:boolean;ghostVote:boolean };
 export type PublicGameView = {
-  phone?:boolean; id:string; version:number; demo:boolean; phase:Phase; night:number;day:number;players:PublicPlayer[];assistantId:string;
-  nextPlayer:PublicPlayer|null; announcement:Game['announcement']; cue:Game['cue'];timer:Game['timer'];paused:boolean;
+  truthfulInformation?:boolean;
+  fastNight?:boolean; phone?:boolean; id:string; version:number; demo:boolean; phase:Phase; night:number;day:number;players:PublicPlayer[];assistantId:string;
+  readyCount:number; nextPlayer:PublicPlayer|null; announcement:Game['announcement']; cue:Game['cue'];timer:Game['timer'];paused:boolean;
   nomination:Game['nomination'];ballots:Game['ballots'];voteDraft:string[];nominators:string[];nominated:string[];
   executionCandidate:string|null; tied:boolean; threshold:number; events:Game['events'];winner?:Team;endReason?:string;
   reveal?:GrimoireEntry[];minimumVisitMs:number;
@@ -38,7 +40,7 @@ export type PlayerPrivateView = { id:string;name:string;character:Character;team
 
 /** Capabilities are separate: narration never receives the secret decision context. */
 export type DecisionContext = {
-  schemaVersion:1; gameId:string; phase:Phase; night:number; day:number;
+  schemaVersion:1; truthfulInformation?:boolean; gameId:string; phase:Phase; night:number; day:number;
   grimoire:GrimoireEntry[]; choices:Record<string,string[]>;
   information:{playerId:string;apparent:Role;history:Information[]}[];
   redHerring:string; bluffs:Role[]; notes:string; recentDecisions:DecisionRecord[]; request:unknown;

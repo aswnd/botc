@@ -84,7 +84,7 @@ also supported. Actions use Playwright's normal visibility and actionability che
 {"action":"finish","outcome":"pass","findings":[]}
 ```
 
-Actions default to the laptop. `screen` accepts `laptop`, `projector`, or an opened `phone1`–`phone10`. Each phone has isolated storage and a mobile/touch browser context. `focus` switches to a screen without clicking it. `replace-phone` closes that phone and opens a fresh context with empty storage: recover using the code saved from the old device. Open a different unused phone instead when testing whether the old credential is rejected. Observations include a `phones` map with their text, controls and screenshots. `wait` is
+Actions default to the laptop. `screen` accepts `laptop`, `projector`, or an opened `phone1`–`phone10`. Each phone has isolated storage and a mobile/touch browser context. `focus` switches to a screen without clicking it. `replace-phone` closes that phone and opens a fresh context with empty storage: this discards the saved login, so register again before the game starts. Use reload to verify automatic login with the saved identifier. Observations include a `phones` map with their text, controls and screenshots. `wait` is
 capped at 15 seconds per call. JavaScript dialogs are recorded and dismissed by default. For a deliberate
 confirmation such as a Slayer shot, include `"acceptDialog":true` on its click
 command. Switching tabs conceals private phone content without logging out; use the reveal button after returning. Screenshots do not switch tabs. Reloading exercises persistent player identity.
@@ -120,7 +120,7 @@ npx playwright show-trace test-results/playtest-<timestamp>/phone1-trace.zip
 > before confirmation, confirmed totals, ties when possible, executions, and dead
 > votes. Verify that editing a draft does not spend a dead vote and confirming it
 > does. Try an incomplete target choice and inspect the disabled submission control.
-> Reload a phone and recover its identity in another browser; check that choices persist and the old credential stops working.
+> Reload a phone; check that its saved identifier logs it back in automatically and choices persist.
 > Inspect mobile overflow and projector readability. Continue until a winner is
 > displayed, with a maximum of 400 actions. On failure record the exact steps,
 > expected/actual behavior, player/phase and screenshot paths. Send a finish command
@@ -161,7 +161,7 @@ Requires a clean committed Git checkout, installed dependencies and Chromium,
 an authenticated `codex` CLI (`codex login`), and the normal Storyteller `.env`.
 The CLI uses your configured Codex model. Each agent registers 7–10 isolated phones through the interactive
 Playwright harness, reviews laptop/projector/phone screenshots, fixes observed issues, adds regressions,
-and runs the tests. Agents rotate 7–10 players and areas of emphasis. Every run checks the shared night steps, dead-player confirmations, phone recovery and concealment, private Q&A/tutorial, and public/private separation. Reports include the winner or blocker, phone coverage, and checks that could not be reached. These are ten
+and runs the tests. Agents rotate 7–10 players and areas of emphasis. Every run checks the shared night steps, dead-player confirmations, automatic phone login and concealment, private Q&A/tutorial, and public/private separation. Reports include the winner or blocker, phone coverage, and checks that could not be reached. These are ten
 separate omniscient QA sessions, not ten independently competing players.
 
 The controller creates a detached Git worktree for each agent. The shared

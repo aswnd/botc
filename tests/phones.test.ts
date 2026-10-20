@@ -13,7 +13,7 @@ const view=async(app:any,token:string)=>(await request(app,'/api/player',{header
 async function register(app:any,count=7){const l=(await state(app)).lobby;const members=[];for(let i=0;i<count;i++){const r=await post(app,'/api/lobby/register',{lobbyId:l.id,name:`Person ${i+1}`,seat:i+1});assert.equal(r.status,200,r.body);members.push(r.json());}return members;}
 async function start(app:any,count=7){const members=await register(app,count);await host(app,'/api/lobby/assistant',{id:members[0].identity.id});assert.equal((await host(app,'/api/lobby/start',{demo:false})).status,200);await ack(app);return members;}
 async function ack(app:any){return host(app,'/api/command',{version:app.getGame()!.version,commandId:crypto.randomUUID(),command:{type:'ack'}});}
-async function submit(app:any,m:any,overrides:any={}){const p=(await view(app,m.token)).view;return post(app,'/api/player/submit',{commandId:crypto.randomUUID(),gameId:p.gameId,phase:p.phase,night:p.night,targets:p.action?p.targets.filter((x:any)=>!p.action.excludeSelf||x.id!==p.id).slice(0,p.action.count).map((x:any)=>x.id):[],...overrides},m.token);}
+async function submit(app:any,m:any,overrides:any={}){const p=(await view(app,m.token)).view;const result=await post(app,'/api/player/submit',{commandId:crypto.randomUUID(),gameId:p.gameId,phase:p.phase,night:p.night,targets:p.action?p.targets.filter((x:any)=>!p.action.excludeSelf||x.id!==p.id).slice(0,p.action.count).map((x:any)=>x.id):[],...overrides},m.token);await app.idle();return result;}
 
 test('production lobby: unique registration, seat guards, host separation and roster lock',async()=>{
  const app=testApp({dbPath:':memory:',legacyApi:false});try{
@@ -53,25 +53,24 @@ test('simultaneous phone steps, scoped retries, fixed choices and public privacy
   assert.deepEqual(after.info,before.info,'no early results');
   for(const m of ms.slice(1).reverse())assert.equal((await submit(app,m)).status,200);
   assert.equal(app.getGame()!.phase,'night_results');assert.equal(app.getGame()!.queueIndex,0);assert.equal((await state(app)).game.nextPlayer,null);
+  const readyBefore=[...app.getGame()!.ready!];
   assert.equal((await post(app,'/api/player/submit',{commandId:'locked',gameId:g.id,phase:'night_choices',night:1},ms[0].token)).status,200,'duplicate survives phase change');
-  assert.equal(app.getGame()!.ready!.length,0,'duplicate does not acknowledge results');
-  for(const m of ms)assert.equal((await submit(app,m)).status,200);
+  assert.deepEqual(app.getGame()!.ready,readyBefore,'duplicate does not acknowledge results');
+  for(const m of ms)if(!(await view(app,m.token)).view.submitted)assert.equal((await submit(app,m)).status,200);
   assert.equal(app.getGame()!.phase,'dawn');await ack(app);assert.equal(app.getGame()!.phase,'discussion');
  }finally{await app.close();}
 });
 
-test('recovery survives restart, rotates device token, retains submissions and archives legacy saves',async()=>{
+test('stored phone credentials survive restart, retain submissions and archive legacy saves',async()=>{
  const dir=await mkdtemp(join(tmpdir(),'phones-')),dbPath=join(dir,'game.sqlite');let app=testApp({dbPath,legacyApi:false});
  try{
   const old=makeGame({names:['A','B','C','D','E','F','G'],assistant:0});app.store.save(old);await app.close();app=testApp({dbPath,legacyApi:false});
   assert.equal((await state(app)).game,null);assert.equal((await state(app)).lobby.legacyArchived,true);
   const ms=await start(app);await submit(app,ms[0]);const id=app.getGame()!.id;await app.close();app=testApp({dbPath,legacyApi:false});
   assert.equal((await view(app,ms[0].token)).view.submitted,true);
-  const recovered=await post(app,'/api/player/recover',{code:ms[0].recoveryCode});assert.equal(recovered.status,200);const token=recovered.json().token;
-  assert.equal((await request(app,'/api/player',{headers:{'x-player-token':ms[0].token}})).status,400);
-  assert.equal((await view(app,token)).view.submitted,true);assert.equal(app.getGame()!.id,id);
+  assert.equal(app.getGame()!.id,id);
   assert.ok(app.store.db.prepare('SELECT 1 FROM games WHERE id=?').get(old.id));
-  const raw=JSON.stringify(app.store.db.prepare('SELECT state FROM phone_lobby').get());assert.ok(!raw.includes(token));assert.ok(!raw.includes(ms[0].recoveryCode));
+  const raw=JSON.stringify(app.store.db.prepare('SELECT state FROM phone_lobby').get());assert.ok(!raw.includes(ms[0].token));assert.ok(!raw.includes('recoveryHash'));assert.equal(ms[0].recoveryCode,undefined);
  }finally{await app.close();await rm(dir,{recursive:true,force:true});}
 });
 
@@ -79,7 +78,7 @@ test('AI failure preserves all submissions and accepted decisions across restart
  const dir=await mkdtemp(join(tmpdir(),'phone-ai-')),dbPath=join(dir,'game.sqlite');let app=testApp({dbPath,legacyApi:false});try{
   const ms=await start(app);await Promise.all(ms.map(m=>submit(app,m)));await ack(app);
   // Ensure this night requests several Storyteller decisions regardless of random setup.
-  const g=app.getGame()!;for(const [i,r] of ['chef','recluse','investigator','empath','soldier','poisoner','imp'].entries()){g.players[i].role=r as any;g.players[i].apparent=r as any;g.players[i].team=i<5?'good':'evil';}app.store.save(g);
+  const g=app.getGame()!;g.fastNight=false;g.truthfulInformation=false;for(const [i,r] of ['chef','recluse','investigator','empath','soldier','poisoner','imp'].entries()){g.players[i].role=r as any;g.players[i].apparent=r as any;g.players[i].team=i<5?'good':'evil';}app.store.save(g);
   let calls=0;app.ai.services=()=>({decide:async r=>{calls++;if(calls===2)throw new Error('injected outage');return testDecider(r);}});
   for(const m of ms)await submit(app,m);
   assert.equal(app.getGame()!.phase,'night_choices');assert.equal(Object.keys(app.getGame()!.choices).length,7);assert.equal((await state(app)).resolutionError,true);
@@ -111,7 +110,6 @@ test('new rounds archive active games, rotate lobby credentials and remain fresh
   assert.equal((await host(app,'/api/lobby/reset')).status,400,'explicit archive is required for active game');
   assert.equal((await host(app,'/api/lobby/reset',{archive:true})).status,200);
   assert.equal((await state(app)).game,null);assert.equal((await request(app,'/api/player',{headers:{'x-player-token':ms[0].token}})).status,400);
-  assert.equal((await post(app,'/api/player/recover',{code:ms[0].recoveryCode})).status,400);
   await app.close();app=testApp({dbPath,legacyApi:false});assert.equal((await state(app)).game,null);
   await start(app);assert.notEqual(app.getGame()!.id,oldId);assert.ok(app.store.db.prepare('SELECT 1 FROM games WHERE id=?').get(oldId));
  }finally{await app.close();await rm(dir,{recursive:true,force:true});}
@@ -153,4 +151,76 @@ test('production phone transport completes games across all supported player cou
    assert.equal(app.getGame()!.phase,'ended');assert.equal(app.getGame()!.winner,'good');assert.ok((await state(app)).game.reveal.length===count);
   }finally{await app.close();}
  }
+});
+
+test('phone host can choose truthful or standard information before starting',async()=>{
+ for(const truthfulInformation of [true,false]){
+  const app=testApp({dbPath:':memory:',legacyApi:false});try{
+   const members=await register(app);await host(app,'/api/lobby/assistant',{id:members[0].identity.id});
+   assert.equal((await host(app,'/api/lobby/start',{demo:false,truthfulInformation:'false'})).status,400);
+   assert.equal((await host(app,'/api/lobby/start',{demo:false,truthfulInformation})).status,200);
+   assert.equal(app.getGame()!.truthfulInformation,truthfulInformation);
+   assert.equal((await state(app)).game.truthfulInformation,truthfulInformation);
+  }finally{await app.close();}
+ }
+});
+
+test('continuous night only asks recipients of new information to confirm again and fast mode calls no AI',async()=>{
+ const app=testApp({dbPath:':memory:',legacyApi:false});try{
+  const ms=await start(app,8);await Promise.all(ms.map(m=>submit(app,m)));await ack(app);
+  const g=app.getGame()!;
+  const roles=['fortune_teller','empath','monk','soldier','undertaker','butler','poisoner','imp'];
+  for(const [i,role] of roles.entries())Object.assign(g.players[i],{role,apparent:role,notifiedRole:role,team:i<6?'good':'evil'});
+  g.players[3].alive=false;g.publicDead=['p4'];g.fastNight=true;
+  app.ai.services=()=>{throw new Error('fast night must not request AI services');};
+  for(const m of ms)assert.equal((await submit(app,m)).status,200);
+  assert.equal(app.getGame()!.phase,'night_results');
+  for(const i of [2,3,4,5,6,7])assert.equal((await view(app,ms[i].token)).view.submitted,true,roles[i]);
+  for(const i of [0,1])assert.equal((await view(app,ms[i].token)).view.submitted,false,roles[i]);
+  const ready=[...app.getGame()!.ready!];
+  assert.deepEqual(ready,['p3','p4','p5','p6','p7','p8']);
+  assert.ok(app.getGame()!.decisions.every(d=>d.reason.includes('lokale Auswahl')));
+  for(const i of [0,1])assert.equal((await submit(app,ms[i])).status,200);
+  assert.equal(app.getGame()!.phase,'dawn');
+ }finally{await app.close();}
+});
+
+test('last submission returns while AI works and resolution does not expose partial results',async()=>{
+ const app=testApp({dbPath:':memory:',legacyApi:false});let release!:()=>void;
+ const gate=new Promise<void>(ok=>release=ok);let started!:()=>void;const resolving=new Promise<void>(ok=>started=ok);
+ try{
+  const ms=await start(app);await Promise.all(ms.map(m=>submit(app,m)));await ack(app);
+  const g=app.getGame()!;g.fastNight=false;
+  for(const [i,role] of ['washerwoman','chef','empath','soldier','monk','poisoner','imp'].entries())Object.assign(g.players[i],{role,apparent:role,notifiedRole:role,team:i<5?'good':'evil'});
+  app.ai.services=()=>({decide:async r=>{started();await gate;return testDecider(r);}});
+  for(const m of ms.slice(0,-1))await submit(app,m);
+  const m=ms.at(-1)!,p=(await view(app,m.token)).view;
+  const result=await post(app,'/api/player/submit',{commandId:crypto.randomUUID(),gameId:p.gameId,phase:p.phase,night:p.night,targets:p.action?p.targets.filter((x:any)=>!p.action.excludeSelf||x.id!==p.id).slice(0,p.action.count).map((x:any)=>x.id):[]},m.token);
+  assert.equal(result.status,200);assert.equal(result.json().view.submitted,true);
+  await resolving;assert.equal((await state(app)).resolving,true);
+  assert.equal((await view(app,ms[0].token)).view.info.filter((i:any)=>i.night===g.night).length,0);
+  release();await app.idle();assert.equal((await state(app)).resolving,false);assert.equal(app.getGame()!.phase,'night_results');
+ }finally{release();await app.close();}
+});
+
+test('phone nights with no new information advance directly to dawn',async()=>{
+ let g=makeGame({names:['A','B','C','D','E','F','G'],assistant:0,phone:true,roles:['ravenkeeper','monk','soldier','virgin','slayer','poisoner','imp']});
+ g.phase='night_choices';g.night=2;g.announcement=undefined;g.nightStartAlive=g.players.map(p=>p.id);
+ g.choices={p1:['p2'],p2:['p3'],p3:[],p4:[],p5:[],p6:['p4'],p7:['p3']};
+ g=await applyCommand(g,{type:'phone_resolve'});
+ assert.equal(g.phase,'dawn');assert.equal(g.nightDeaths.length,0,'Soldier survives');
+});
+
+test('host can switch an existing night to local mode without discarding accepted choices',async()=>{
+ const app=testApp({dbPath:':memory:',legacyApi:false});try{
+  const ms=await start(app);await Promise.all(ms.map(m=>submit(app,m)));await ack(app);
+  app.getGame()!.fastNight=false;await submit(app,ms[0]);
+  const choices=structuredClone(app.getGame()!.choices);
+  assert.equal((await post(app,'/api/night/mode',{fastNight:true},ms[0].token)).status,400);
+  assert.equal((await host(app,'/api/night/mode',{fastNight:'true'})).status,400);
+  assert.equal((await host(app,'/api/night/mode',{fastNight:true})).status,200);
+  assert.equal((await state(app)).game.fastNight,true);assert.deepEqual(app.getGame()!.choices,choices);
+  assert.equal((await host(app,'/api/night/mode',{fastNight:false})).status,200);
+  assert.equal(app.getGame()!.fastNight,false);
+ }finally{await app.close();}
 });

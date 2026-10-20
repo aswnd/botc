@@ -206,8 +206,12 @@ export const articles = [
         "text": "A drunk or poisoned player has no functioning ability, but the Storyteller pretends it works. They still make choices and may receive plausible information. That information may be true or false; it does not have to be false. Players normally do not learn that they are affected."
       },
       {
+        "title": "Same effect, different source",
+        "text": "Drunk and poisoned have the same mechanical effect. The ability causing the condition determines its duration. For example, the Poisoner poisons a player for that night and the following day; the Sailor makes a player drunk until dusk. Neither condition changes the player’s character or alignment. Sober means not drunk; healthy means not poisoned. A player needs both for an ordinary ability to work."
+      },
+      {
         "title": "The Drunk character",
-        "text": "The Drunk is an Outsider who thinks they are a particular Townsfolk. The apparent Townsfolk token goes in the bag instead of the Drunk token. The player has no Townsfolk ability. This is different from a real Townsfolk temporarily made drunk."
+        "text": "The Drunk is an Outsider who thinks they are a particular Townsfolk. The apparent Townsfolk token goes in the bag instead of the Drunk token. The player has no Townsfolk ability. This is different from a real Townsfolk temporarily made drunk or poisoned: a poisoned Empath is still the Empath and can use their ability again when healthy and sober. The Drunk never had the apparent Townsfolk ability and does not gain it when poisoning ends."
       },
       {
         "title": "Misregistration",

@@ -30,7 +30,7 @@ export function rulesContext(pub:PublicGameView,playerId:string){
   if(!speaker)throw new Error('Unbekannte Person.');
   return {
     speaker:{id:speaker.id,name:speaker.name},
-    public:{phase:pub.phase,day:pub.day,night:pub.night,
+    public:{truthfulInformation:!!pub.truthfulInformation,phase:pub.phase,day:pub.day,night:pub.night,
       players:pub.players.map(p=>({id:p.id,name:p.name,seat:p.seat,alive:p.alive,ghostVote:p.ghostVote})),
       threshold:pub.threshold,executionCandidate:pub.executionCandidate,tied:pub.tied,
       nominated:[...pub.nominated],nominators:[...pub.nominators]},

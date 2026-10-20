@@ -202,3 +202,81 @@ test('private storyteller notes flow between decisions and survive game storage'
   assert.ok(!JSON.stringify(publicView(g)).includes('Notiz'));
   for(const p of g.players)assert.ok(!JSON.stringify(privateView(g,p.id)).includes('Notiz'));
 });
+
+test('beginner setups allow all Outsiders and remain valid for every player count',()=>{
+  for(let n=7;n<=10;n++)for(let seed=0;seed<200;seed++){
+    const g=makeGame({names:names.slice(0,n),assistant:0,seed,truthfulInformation:true});
+    assert.equal(g.truthfulInformation,true);
+    assert.equal(g.players.length,n);
+    assert.equal(g.players.filter(p=>ROLE[p.role].category==='outsider').length,(n-7)%3+(g.players.some(p=>p.role==='baron')?2:0));
+    assert.match(g.announcement!.text,/Anfänger-Hausregel/);
+  }
+});
+test('beginner setups allow explicitly assigned Recluse',()=>{
+  const roles:Role[]=['washerwoman','chef','empath','fortune_teller','soldier','recluse','poisoner','imp'];
+  assert.ok(makeGame({names:names.slice(0,8),assistant:0,roles,truthfulInformation:true}).players.some(p=>p.role==='recluse'));
+  assert.ok(makeGame({names:names.slice(0,8),assistant:0,roles,truthfulInformation:false}).players.some(p=>p.role==='recluse'));
+});
+test('beginner clues allow poison misinformation but disable false trails and optional registrations',async()=>{
+  let g=night(fixture(),1);g.truthfulInformation=true;g.redHerring='p2';
+  g=await allVisits(g,{p6:['p2'],p4:['p2','p5']},async r=>{
+    assert.notEqual(r.kind,'registration');
+    if(r.kind==='misinformation'){assert.equal((r.context.request as any).recipientId,'p2');return {choice:'0',reason:'Vergifteter Koch'};}
+    return testDecider(r);
+  });
+  assert.match(g.players[1].info.at(-1)!.text,/Paare: 0/);
+  assert.match(g.players[3].info.at(-1)!.text,/Nein/);
+  g=night(fixture(),1);g.truthfulInformation=true;asRole(g,5,'spy');
+  g=await allVisits(g,{p4:['p2','p5']},async r=>{
+    assert.notEqual(r.kind,'registration');
+    for(const o of r.options){const [a,b,role]=JSON.parse(o.id);assert.ok(g.players.some(p=>[a,b].includes(p.id)&&p.role===role));}
+    return testDecider(r);
+  });
+  assert.match(g.players[1].info.at(-1)!.text,/Paare: 1/);
+});
+
+ test('beginner mode permits Drunk setup and false starting information',async()=>{
+  let g=makeGame({names:names.slice(0,8),assistant:0,roles:['washerwoman','chef','empath','fortune_teller','soldier','drunk','poisoner','imp'],truthfulInformation:true,seed:42,minimumVisitMs:0});
+  asRole(g,5,'drunk','washerwoman');g=night(g,1);
+  let misinformed=false;
+  g=await allVisits(g,{p7:['p5']},async r=>{
+    assert.notEqual(r.kind,'registration');
+    if(r.kind==='misinformation'){
+      assert.equal((r.context.request as any).recipientId,'p6');misinformed=true;
+      const choice=JSON.stringify(['p7','p8','chef']);
+      assert.ok(r.options.some(o=>o.id===choice));return {choice,reason:'Betrunkene Waschfrau'};
+    }
+    return testDecider(r);
+  });
+  assert.ok(misinformed);assert.match(g.players[5].info.at(-1)!.text,/Koch/);
+ });
+
+test('beginner mode allows Recluse registration only while healthy',async()=>{
+  for(const poisonedRecluse of [false,true]){
+    let g=night(fixture(['washerwoman','chef','empath','fortune_teller','soldier','recluse','poisoner','imp']),1);g.truthfulInformation=true;
+    let registered=false;
+    g=await allVisits(g,{p7:[poisonedRecluse?'p6':'p5'],p4:['p6','p5']},async r=>{
+      if(r.kind==='registration'){
+        assert.equal(poisonedRecluse,false);assert.equal((r.context.request as any).subjectId,'p6');registered=true;
+        return {choice:(r.context.request as any).check==='demon'?'true':r.fallback,reason:'Einsiedler-Fähigkeit'};
+      }
+      return testDecider(r);
+    });
+    assert.equal(registered,!poisonedRecluse);
+    assert.match(g.players[3].info.at(-1)!.text,poisonedRecluse?/Nein/:/Ja/);
+  }
+});
+
+test('public readiness counts the current step including dead players without exposing submissions',()=>{
+  const g=fixture();g.phone=true;
+  assert.equal(publicView(g).readyCount,0);
+  g.ready=[g.players[0].id];assert.equal(publicView(g).readyCount,1);
+  g.phase='night_choices';g.players[0].alive=false;g.choices={[g.players[0].id]:[]};
+  assert.equal(publicView(g).readyCount,1);
+  g.choices[g.players[1].id]=[g.players[2].id];assert.equal(publicView(g).readyCount,2);
+  assert.equal('choices' in publicView(g),false);assert.equal('ready' in publicView(g),false);
+  g.phase='night_results';g.ready=[];assert.equal(publicView(g).readyCount,0);
+  g.ready=[g.players[0].id];assert.equal(publicView(g).readyCount,1);
+  g.phone=false;g.queueIndex=3;assert.equal(publicView(g).readyCount,3);
+  g.phase='discussion';assert.equal(publicView(g).readyCount,0);
+});

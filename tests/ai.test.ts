@@ -103,3 +103,21 @@ test('storyteller plans before deciding and reuses its saved plan with the full 
     assert.ok(!('decisions' in publicView(g)));
   }finally{store.close();}
 });
+
+test('Q&A routes to Luna with its own pricing while game master uses Sol',async()=>{
+  const calls:any[]=[];
+  const {store,ai,g}=setup(async(_url,init)=>{
+    const body=JSON.parse(String(init?.body));calls.push(body);
+    return response(body.text.format.name==='private_answer'?{answer:'Eine Regelerklärung.'}:{ok:true});
+  });
+  try{
+    ai.model='gpt-6.1-sol';ai.qaModel='gpt-6-luna';
+    ai.inputPrice=2;ai.outputPrice=10;ai.qaInputPrice=.1;ai.qaOutputPrice=.5;
+    await ai.answer(g,rulesContext(publicView(g),'p1'),'Wie stimmt man ab?');
+    assert.equal(calls[0].model,'gpt-6-luna');
+    assert.ok(Math.abs(store.spent(g.id)-.00006)<1e-12);
+    await ai.check(g);
+    assert.equal(calls[1].model,'gpt-6.1-sol');
+    assert.ok(Math.abs(store.spent(g.id)-.00126)<1e-12);
+  }finally{store.close();}
+});

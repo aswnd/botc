@@ -69,7 +69,7 @@ export function createApp({dbPath=resolve('data/game.sqlite'),root=resolve('.'),
       if(req.method==='POST') {
         const input=await body(req);
         return await serialized(async()=>{
-          const playerRoute=['/api/lobby/register','/api/player/recover','/api/player/submit','/api/player/chat','/api/player/tutorial'].includes(path);
+          const playerRoute=['/api/lobby/register','/api/player/submit','/api/player/chat','/api/player/tutorial'].includes(path);
           if(!playerRoute)phones.host(req);
           if(tutorial&&['/api/lobby/start','/api/player/submit','/api/player/chat','/api/night/retry'].includes(path))throw new GameError('Bitte zuerst die Lernrunde beenden.');
           if(path==='/api/player/tutorial'){
@@ -78,9 +78,11 @@ export function createApp({dbPath=resolve('data/game.sqlite'),root=resolve('.'),
             if(step.vote)requireThat(input.choice===tutorial.names.indexOf(m.name),'Bitte nur deine eigene Übungsstimme abgeben.');
             if(step.actor!==undefined)requireThat(tutorial.names[step.actor]===m.name,'Diese Übung ist für eine andere Person.');
           }
+          if(path==='/api/night/retry')ai.cooldownUntil=0;
           const phoneResult=await phones.post(path,input,req);
           if(phoneResult!==undefined){
             if((phoneResult as any).chat){const c=(phoneResult as any).chat;const answer=await ai.answer({id:c.game.id},rulesContext(publicView(c.game),c.playerId),c.question);store.addChat(c.game.id,c.playerId,c.question,answer);return json(res,200,phones.view(req));}
+            if(path==='/api/player/submit')void serialized(()=>phones.resolve()).catch(()=>{});
             return json(res,200,phoneResult);
           }
           if(path==='/api/tutorial'||path==='/api/player/tutorial') {
@@ -119,7 +121,8 @@ export function createApp({dbPath=resolve('data/game.sqlite'),root=resolve('.'),
             requireThat(!session,'Bitte zuerst den privaten Bildschirm verbergen.');
             requireThat(Array.isArray(input.names)&&input.names.every((n:unknown)=>typeof n==='string'),'Bitte Namen eintragen.');
             requireThat(typeof input.demo==='boolean','Bitte einen Spielmodus wählen.');
-            const next=makeGame({names:input.names,assistant:input.assistant,demo:input.demo,...(input.demo?{seed:2026,minimumVisitMs:0}:{}),...(input.demo&&input.names.length===8?{roles:['chef','empath','fortune_teller','undertaker','virgin','drunk','scarlet_woman','imp']}: {})});
+      requireThat(input.truthfulInformation===undefined||typeof input.truthfulInformation==='boolean','Bitte einen Informationsmodus wählen.');
+            const next=makeGame({truthfulInformation:input.truthfulInformation??!input.demo,names:input.names,assistant:input.assistant,demo:input.demo,...(input.demo?{seed:2026,minimumVisitMs:0}:{}),...(input.demo&&!(input.truthfulInformation??!input.demo)&&input.names.length===8?{roles:['chef','empath','fortune_teller','undertaker','virgin','drunk','scarlet_woman','imp']}: {})});
             store.save(next);game=next;broadcast();return json(res,200,state());
           }
           if(path==='/api/ai/check') {requireThat(!session,'Bitte zuerst den privaten Bildschirm verbergen.');const ok=await ai.check(game??{id:'setup'});broadcast();return json(res,200,{ok,service:ai.service(game)});}
@@ -183,5 +186,5 @@ export function createApp({dbPath=resolve('data/game.sqlite'),root=resolve('.'),
     }
     for(const res of listeners)res.write(': heartbeat\n\n');
   }).catch(()=>{});},1000);tick.unref();
-  return {server,store,ai,ready,getGame:()=>game,close:async()=>{clearInterval(tick);for(const res of listeners)res.end();if(server.listening)await new Promise<void>((ok,fail)=>server.close(e=>e?fail(e):ok()));store.close();}};
+  return {server,store,ai,ready,getGame:()=>game,idle:()=>chain,close:async()=>{clearInterval(tick);await chain;for(const res of listeners)res.end();if(server.listening)await new Promise<void>((ok,fail)=>server.close(e=>e?fail(e):ok()));store.close();}};
 }

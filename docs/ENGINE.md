@@ -13,7 +13,7 @@ distribution -> night_choices -> night_results -> dawn -> discussion
 ```
 
 Night resolution and daytime deaths can also end the game. Night choices are
-collected first, then resolved in rule order, independently of phone submission order. Ravenkeeper targets are preselected; conditional information resolves before later information roles. Each phone confirms results before dawn.
+collected first, then resolved in rule order, independently of phone submission order. Ravenkeeper targets are preselected; conditional information resolves before later information roles. Phone nights are presented as one continuous activity. No-action players complete a local six-symbol activity to submit readiness, then continue playing while the engine resolves. `nightReadCounts` checkpoints each player’s information at submission; only new, non-passive information requires result acknowledgement. Other players are automatically ready, including the dead. Butler master reminders are passive because the player already chose the master. If nobody has new information, the engine advances straight to dawn. Existing saves without checkpoints conservatively treat current-night information as unread.
 
 `applyCommand(snapshot, event, services, now)` clones the snapshot, performs the
 transition, and returns the next snapshot. The HTTP layer serializes commands and
@@ -38,7 +38,7 @@ read-only rules capability with public context. Initial welcome text and tutoria
 instructions stay deterministic. Spending estimates do not cap requests.
 Structured output follows the [OpenAI Structured Outputs guide](https://developers.openai.com/api/docs/guides/structured-outputs).
 
-AI services are required for decisions. Existing callers may still pass a `Decider` directly. Tests inject deterministic services without API calls.
+`fastNight` defaults to true for new phone rounds. During distribution and night processing, the phone adapter selects the engine-provided legal fallback and omits optional AI narration. Choices still use the normal keyed decision log, persistence, and official resolution order; seeded choices are reproducible. Other commands and AI night mode retain the existing services. Existing saves retain their configured mode (missing flags mean AI); the host can change the mode when no resolution is running. Phone submission commits and responds before resolution is queued on the server’s serialized command chain, keeping local activities responsive while protecting atomic results. Failed AI resolution preserves submissions and durable decisions for retry. Existing callers may still pass a `Decider` directly. Tests inject services without API calls.
 
 `tests/machine.test.ts` covers the phase matrix, guarded substates, service
 isolation, rejected injected options, structured decision context, and narration
@@ -47,10 +47,10 @@ failure handling. Existing engine/HTTP/browser tests cover the playable rules an
 
 ## Phone transport
 
-`server/phones.ts` owns the persisted lobby, hashed device/recovery credentials,
+`server/phones.ts` owns the persisted lobby, hashed device credentials,
 per-member idempotency keys, and durable AI decision journal. `/api/lobby/register`
-accepts `{lobbyId,name,seat}`; `/api/player/recover` accepts `{code}` and rotates the
-device credential. `/api/player` uses `X-Player-Token` and returns only that member's
+accepts `{lobbyId,name,seat}` and returns a private device identifier stored in local
+storage for automatic login. `/api/player` uses `X-Player-Token` and returns only that member's
 identity, private view, and submission status. `/api/player/submit` accepts
 `{commandId,gameId,phase,night,targets}`. It binds the actor to the credential and
 does not require the global game version. Submitted choices commit before
